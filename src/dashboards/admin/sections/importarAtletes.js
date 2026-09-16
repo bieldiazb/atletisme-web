@@ -1,5 +1,6 @@
 import { collection, addDoc, Timestamp } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
+import { categoriaPerAny } from "@/lib/categoria"
 
 const atletes = [
   { nom: "ROC ALONSO SOLE", naixement: new Date(2016, 8, 21), sexe: "M" },
@@ -36,14 +37,6 @@ const atletes = [
   { nom: "QUERALT LLOBET", naixement: new Date(2016, 0, 1), sexe: "F" },
 ]
 
-function getCategoria(any) {
-  if (any === 2015 || any === 2016) return "Sub-12"
-  if (any === 2013 || any === 2014) return "Sub-14"
-  if (any === 2011 || any === 2012) return "Sub-16"
-  if (any === 2017 || any === 2018) return "Sub-10"
-  return "Sub-8"
-}
-
 export async function importarAtletes() {
   for (const a of atletes) {
     const any = a.naixement.getFullYear()
@@ -56,7 +49,7 @@ export async function importarAtletes() {
       nom: a.nom,
       sexe: a.sexe,
       naixement: Timestamp.fromDate(a.naixement),
-      categoria: getCategoria(any),
+      categoria: categoriaPerAny(any),
       actiu: true,
       codiPublic,
     })

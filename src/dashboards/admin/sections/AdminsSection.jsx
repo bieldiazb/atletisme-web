@@ -2,14 +2,14 @@ import { useEffect, useState } from "react"
 import {
   collection,
   getDocs,
-  deleteDoc,
   doc,
   setDoc,
   updateDoc,
   Timestamp,
 } from "firebase/firestore"
 import { httpsCallable } from "firebase/functions"
-import { db, functions } from "../../../../firebaseClient"
+import { sendPasswordResetEmail } from "firebase/auth"
+import { db, functions, auth } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 
 import {
@@ -28,13 +28,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Shield, Lock } from "lucide-react"
+import { Shield, Lock, KeyRound, Ban, UserCheck, Mail, Wrench } from "lucide-react"
 
 const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
 const FORM_BUIT = { nom: "", email: "", password: "", rol: "admin", categories: [] }
 
 export default function AdminsSection() {
-  const { esAdmin, userData } = useUser()
+  const { esAdmin, esDeveloper, userData } = useUser()
   const uidActual = userData?.id
 
   const [admins, setAdmins]     = useState([])
@@ -42,6 +42,11 @@ export default function AdminsSection() {
   const [editant, setEditant]   = useState(null)
   const [form, setForm]         = useState(FORM_BUIT)
   const [guardant, setGuardant] = useState(false)
+
+  // ── Accions Firebase Auth (developer) ──────────────────────────────
+  const [busyUid, setBusyUid]           = useState(null)
+  const [emailDialogFor, setEmailDialogFor] = useState(null)
+  const [novaEmail, setNovaEmail]       = useState("")
 
   const load = async () => {
     const snap = await getDocs(collection(db, "admins"))
@@ -159,12 +164,113 @@ export default function AdminsSection() {
         : [...prev.categories, cat],
     }))
 
-  // ── Eliminar ──────────────────────────────────────────────────────
+  // ── Eliminar (Auth + Firestore, via Cloud Function) ─────────────────
   const remove = async (admin) => {
     if (!potEliminar(admin)) return
-    if (!confirm(`Eliminar ${admin.email}?`)) return
-    await deleteDoc(doc(db, "admins", admin.id))
-    load()
+    if (!confirm(`Eliminar ${admin.email}? Es tancarà del tot l'accés a l'app.`)) return
+    setBusyUid(admin.id)
+    try {
+      const fn = httpsCallable(functions, "deleteAdminUser")
+      await fn({ uid: admin.id })
+      load()
+    } catch (err) {
+      console.error(err)
+      alert("Error eliminant: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  // ── Accions reservades a developer ──────────────────────────────────
+  const hiHaDeveloper = admins.some(a => a.isDeveloper)
+
+  const enviarResetPassword = async (admin) => {
+    if (!admin.email) return
+    setBusyUid(admin.id)
+    try {
+      await sendPasswordResetEmail(auth, admin.email)
+      alert(`Correu de restabliment enviat a ${admin.email}`)
+    } catch (err) {
+      console.error(err)
+      alert("Error enviant el correu: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  const toggleDisabled = async (admin) => {
+    if (admin.id === uidActual) return
+    const missatge = admin.disabled
+      ? `Reactivar l'accés de ${admin.email}?`
+      : `Desactivar l'accés de ${admin.email}? No podrà iniciar sessió.`
+    if (!confirm(missatge)) return
+    setBusyUid(admin.id)
+    try {
+      const fn = httpsCallable(functions, "setUserDisabled")
+      await fn({ uid: admin.id, disabled: !admin.disabled })
+      load()
+    } catch (err) {
+      console.error(err)
+      alert("Error: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  const openCanviarEmail = (admin) => {
+    setEmailDialogFor(admin)
+    setNovaEmail(admin.email ?? "")
+  }
+
+  const guardarNovaEmail = async () => {
+    if (!emailDialogFor || !novaEmail) return
+    setBusyUid(emailDialogFor.id)
+    try {
+      const fn = httpsCallable(functions, "updateUserEmail")
+      await fn({ uid: emailDialogFor.id, newEmail: novaEmail })
+      setEmailDialogFor(null)
+      load()
+    } catch (err) {
+      console.error(err)
+      alert("Error canviant l'email: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  const toggleDeveloper = async (admin) => {
+    if (admin.id === uidActual) return
+    const nou = !admin.isDeveloper
+    const missatge = nou
+      ? `Convertir ${admin.email} en developer?`
+      : `Treure el rol de developer a ${admin.email}?`
+    if (!confirm(missatge)) return
+    setBusyUid(admin.id)
+    try {
+      const fn = httpsCallable(functions, "setDeveloperStatus")
+      await fn({ uid: admin.id, isDeveloper: nou })
+      load()
+    } catch (err) {
+      console.error(err)
+      alert("Error: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  const ferMeDeveloper = async () => {
+    if (!confirm("Vols convertir-te en developer? Només funciona si encara no hi ha cap developer configurat.")) return
+    setBusyUid(uidActual)
+    try {
+      const fn = httpsCallable(functions, "setDeveloperStatus")
+      await fn({ uid: uidActual, isDeveloper: true })
+      load()
+    } catch (err) {
+      console.error(err)
+      alert("Error: " + err.message)
+    } finally {
+      setBusyUid(null)
+    }
   }
 
   const rolBadge = (rol) =>
@@ -177,7 +283,7 @@ export default function AdminsSection() {
 
   return (
     <>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold">Admins i Entrenadors</h1>
           {!esAdmin && (
@@ -185,10 +291,23 @@ export default function AdminsSection() {
               <Lock className="h-3 w-3" /> Només pots editar el teu propi perfil
             </p>
           )}
+          {esDeveloper && (
+            <p className="text-xs text-violet-600 mt-1 flex items-center gap-1 font-medium">
+              <Wrench className="h-3 w-3" /> Tens accions de developer disponibles a la taula
+            </p>
+          )}
         </div>
-        {potCrear && (
-          <Button onClick={openCreate}>Nou usuari</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {esAdmin && !esDeveloper && !hiHaDeveloper && (
+            <Button variant="outline" disabled={busyUid === uidActual} onClick={ferMeDeveloper}>
+              <Wrench className="mr-2 h-4 w-4" />
+              Convertir-me en developer
+            </Button>
+          )}
+          {potCrear && (
+            <Button onClick={openCreate}>Nou usuari</Button>
+          )}
+        </div>
       </div>
 
       <Table>
@@ -211,17 +330,27 @@ export default function AdminsSection() {
                 </div>
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {a.email}
                   {esPropietari(a.id) && (
                     <span className="rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-semibold">Tu</span>
                   )}
+                  {a.disabled && (
+                    <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Desactivat</span>
+                  )}
                 </div>
               </TableCell>
               <TableCell>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rolBadge(a.rol ?? "admin")}`}>
-                  {a.rol === "entrenador" ? "Entrenador" : "Admin"}
-                </span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rolBadge(a.rol ?? "admin")}`}>
+                    {a.rol === "entrenador" ? "Entrenador" : "Admin"}
+                  </span>
+                  {a.isDeveloper && (
+                    <span className="flex items-center gap-1 rounded-full bg-violet-100 text-violet-700 text-xs px-2 py-0.5 font-semibold">
+                      <Wrench className="h-3 w-3" /> Developer
+                    </span>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 {a.rol === "entrenador" && a.categories?.length > 0 ? (
@@ -236,7 +365,43 @@ export default function AdminsSection() {
               </TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground">{a.id}</TableCell>
               <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end flex-wrap gap-1.5">
+                  {esDeveloper && (
+                    <>
+                      <Button
+                        size="icon" variant="outline" className="h-8 w-8"
+                        title="Enviar correu de restabliment de contrasenya"
+                        disabled={busyUid === a.id}
+                        onClick={() => enviarResetPassword(a)}
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon" variant="outline" className="h-8 w-8"
+                        title={a.disabled ? "Reactivar accés" : "Desactivar accés"}
+                        disabled={busyUid === a.id || a.id === uidActual}
+                        onClick={() => toggleDisabled(a)}
+                      >
+                        {a.disabled ? <UserCheck className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button
+                        size="icon" variant="outline" className="h-8 w-8"
+                        title="Canviar email"
+                        disabled={busyUid === a.id}
+                        onClick={() => openCanviarEmail(a)}
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon" variant={a.isDeveloper ? "default" : "outline"} className="h-8 w-8"
+                        title={a.isDeveloper ? "Treure rol developer" : "Fer developer"}
+                        disabled={busyUid === a.id || a.id === uidActual}
+                        onClick={() => toggleDeveloper(a)}
+                      >
+                        <Wrench className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
                   {potEditar(a) ? (
                     <Button size="sm" variant="secondary" onClick={() => openEditar(a)}>
                       Editar
@@ -247,7 +412,7 @@ export default function AdminsSection() {
                     </Button>
                   )}
                   {potEliminar(a) ? (
-                    <Button size="sm" variant="destructive" onClick={() => remove(a)}>
+                    <Button size="sm" variant="destructive" disabled={busyUid === a.id} onClick={() => remove(a)}>
                       Eliminar
                     </Button>
                   ) : (
@@ -396,6 +561,33 @@ export default function AdminsSection() {
               onClick={editant ? saveEditar : save}
             >
               {guardant ? "Guardant..." : editant ? "Guardar canvis" : "Crear usuari"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog canviar email (developer) ──────────────────────────── */}
+      <Dialog open={!!emailDialogFor} onOpenChange={(o) => { if (!o) setEmailDialogFor(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Canviar email d'inici de sessió</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Usuari actual: <span className="font-semibold text-foreground">{emailDialogFor?.email}</span>
+            </p>
+            <Input
+              type="email"
+              placeholder="Email nou"
+              value={novaEmail}
+              onChange={e => setNovaEmail(e.target.value)}
+            />
+            <Button
+              className="w-full"
+              disabled={busyUid === emailDialogFor?.id || !novaEmail}
+              onClick={guardarNovaEmail}
+            >
+              {busyUid === emailDialogFor?.id ? "Guardant..." : "Guardar email nou"}
             </Button>
           </div>
         </DialogContent>

@@ -7,13 +7,16 @@ import {
   deleteDoc,
   doc,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { logAudit } from "@/lib/auditLog"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DataTable } from "@/components/ui/data-table"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import {
   Sheet,
@@ -55,6 +58,11 @@ import {
   ArrowUpAZ,
   ArrowDownUp,
   CalendarIcon,
+  Home,
+  Sun,
+  TreePine,
+  Route,
+  ChevronDown,
   Plus,
   Search,
   X,
@@ -64,6 +72,26 @@ import { ca } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 
 const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+
+// Tipus de pista de l'event. Es guarda a l'event i es mostra també a cada marca
+// que hi estigui vinculada (a natació, coberta = 25m normalment, aire lliure = 50m).
+const TIPUS_PISTA = [
+  { value: "coberta", label: "Coberta", icon: Home },
+  { value: "aire_lliure", label: "Aire lliure", icon: Sun },
+  { value: "cross", label: "Cross", icon: TreePine },
+  { value: "marxa_ruta", label: "Marxa en ruta", icon: Route },
+]
+function pistaInfo(value) {
+  return TIPUS_PISTA.find((p) => p.value === value) ?? null
+}
+
+// Firestore writeBatch admet un màxim de 500 operacions.
+const BATCH_SIZE = 450
+function chunk(arr, size) {
+  const out = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
@@ -97,12 +125,16 @@ function SortButton({ label, field, sort, onToggle }) {
 export default function EventsSection() {
   const { toast } = useToast()
   const isMobile = useIsMobile()
-  const { esAdmin, teAccesCat, categories: catUsuari } = useUser()
+  const { esAdmin, teAccesCat, categories: catUsuari, userData } = useUser()
 
   const [events, setEvents] = useState([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const categoriesDisponibles = esAdmin ? TOTES_CATEGORIES : catUsuari
 
@@ -110,6 +142,7 @@ export default function EventsSection() {
     nom: "",
     lloc: "",
     categoria: "tots",
+    tipusPista: "tots",
     dataDes: null,
     dataFins: null,
   })
@@ -130,6 +163,7 @@ export default function EventsSection() {
     link: "",
     date: undefined,
     categories: [],
+    tipusPista: "",
   })
 
   const load = async () => {
@@ -138,6 +172,15 @@ export default function EventsSection() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Neteja la selecció d'ids que ja no existeixen
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const validIds = new Set(events.map((e) => e.id))
+      const next = new Set([...prev].filter((id) => validIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [events])
 
   // Events filtrats per rol: un entrenador veu els events que inclouen almenys una de les seves categories
   // (o events sense categories assignades, que es consideren generals)
@@ -157,6 +200,7 @@ export default function EventsSection() {
         const cats = e.categories ?? []
         if (!cats.includes(filters.categoria)) return false
       }
+      if (filters.tipusPista !== "tots" && e.tipusPista !== filters.tipusPista) return false
       const d = e.date?.toDate?.()
       if (d) {
         if (filters.dataDes && d < filters.dataDes) return false
@@ -177,10 +221,116 @@ export default function EventsSection() {
 
   const hasActiveFilters =
     filters.nom !== "" || filters.lloc !== "" || filters.categoria !== "tots" ||
-    filters.dataDes !== null || filters.dataFins !== null
+    filters.tipusPista !== "tots" || filters.dataDes !== null || filters.dataFins !== null
 
   const resetFilters = () =>
-    setFilters({ nom: "", lloc: "", categoria: "tots", dataDes: null, dataFins: null })
+    setFilters({ nom: "", lloc: "", categoria: "tots", tipusPista: "tots", dataDes: null, dataFins: null })
+
+  // --- Selecció en massa (només sobre les files que compleixen els filtres actuals) ---
+  const filteredIds = filteredEvents.map((e) => e.id)
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id))
+  const someFilteredSelected = filteredIds.some((id) => selectedIds.has(id))
+  const selectAllCheckboxState = allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allFilteredSelected) filteredIds.forEach((id) => next.delete(id))
+      else filteredIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+    setBulkCategories([])
+  }
+
+  const [bulkCategories, setBulkCategories] = useState([])
+  const [bulkCatOpen, setBulkCatOpen] = useState(false)
+  const toggleBulkCategoria = (cat) =>
+    setBulkCategories((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]))
+
+  const bulkSetTipusPista = async (value) => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      for (const group of chunk(ids, BATCH_SIZE)) {
+        const batch = writeBatch(db)
+        group.forEach((id) => batch.update(doc(db, "events", id), { tipusPista: value }))
+        await batch.commit()
+      }
+      toast({
+        title: "Events actualitzats",
+        description: `${ids.length} event${ids.length > 1 ? "s" : ""} marcat${ids.length > 1 ? "s" : ""} com a ${pistaInfo(value)?.label ?? value}`,
+      })
+      logAudit(userData, "events.bulkUpdate", { extra: { tipusPista: value, quantitat: ids.length } })
+      clearSelection()
+      load()
+    } catch {
+      toast({ variant: "destructive", title: "Error actualitzant en massa", description: "Torna-ho a provar" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  const bulkSetCategories = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      for (const group of chunk(ids, BATCH_SIZE)) {
+        const batch = writeBatch(db)
+        group.forEach((id) => batch.update(doc(db, "events", id), { categories: bulkCategories }))
+        await batch.commit()
+      }
+      toast({
+        title: "Events actualitzats",
+        description: `${ids.length} event${ids.length > 1 ? "s" : ""} actualitzat${ids.length > 1 ? "s" : ""} amb ${bulkCategories.length > 0 ? bulkCategories.join(", ") : "cap categoria (general)"}`,
+      })
+      logAudit(userData, "events.bulkUpdate", { extra: { categories: bulkCategories.join(", ") || "general", quantitat: ids.length } })
+      setBulkCatOpen(false)
+      setBulkCategories([])
+      clearSelection()
+      load()
+    } catch {
+      toast({ variant: "destructive", title: "Error actualitzant en massa", description: "Torna-ho a provar" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  const confirmBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      for (const group of chunk(ids, BATCH_SIZE)) {
+        const batch = writeBatch(db)
+        group.forEach((id) => batch.delete(doc(db, "events", id)))
+        await batch.commit()
+      }
+      toast({ title: "Events eliminats", description: `${ids.length} event${ids.length > 1 ? "s" : ""} eliminat${ids.length > 1 ? "s" : ""} correctament` })
+      logAudit(userData, "events.bulkDelete", { extra: { quantitat: ids.length } })
+      setBulkDeleteConfirm(false)
+      clearSelection()
+      load()
+    } catch {
+      toast({ variant: "destructive", title: "Error eliminant en massa", description: "No s'han pogut eliminar" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
 
   const toggleCategoria = (cat) =>
     setForm(prev => ({
@@ -192,7 +342,7 @@ export default function EventsSection() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ title: "", lloc: "", date: undefined, categories: [], link: "" })
+    setForm({ title: "", lloc: "", date: undefined, categories: [], link: "", tipusPista: "" })
     setOpen(true)
   }
 
@@ -204,6 +354,7 @@ export default function EventsSection() {
       date: event.date?.toDate ? event.date.toDate() : undefined,
       categories: event.categories ?? [],
       link: event.link ?? "",
+      tipusPista: event.tipusPista ?? "",
     })
     setOpen(true)
   }
@@ -213,34 +364,76 @@ export default function EventsSection() {
       toast({ variant: "destructive", title: "Error", description: "Nom i data son obligatoris" })
       return
     }
+    if (!form.tipusPista) {
+      toast({ variant: "destructive", title: "Error", description: "Cal indicar el tipus de pista" })
+      return
+    }
     const payload = {
       title: form.title,
       lloc: form.lloc,
       date: Timestamp.fromDate(form.date),
       categories: form.categories,
       link: form.link,
+      tipusPista: form.tipusPista,
     }
     if (editing) {
       await updateDoc(doc(db, "events", editing.id), payload)
       toast({ title: "Event editat", description: "Els canvis s'han desat correctament" })
+      logAudit(userData, "events.update", { target: editing.id, extra: { title: form.title } })
     } else {
-      await addDoc(collection(db, "events"), payload)
+      const ref = await addDoc(collection(db, "events"), payload)
       toast({ title: "Event creat", description: "L'event s'ha creat correctament" })
+      logAudit(userData, "events.create", { target: ref.id, extra: { title: form.title } })
     }
     setOpen(false)
     load()
   }
 
   const confirmDelete = async () => {
+    const title = events.find((e) => e.id === deleteId)?.title
     await deleteDoc(doc(db, "events", deleteId))
     setDeleteId(null)
     load()
     toast({ title: "Event eliminat", description: "L'event s'ha eliminat correctament" })
+    logAudit(userData, "events.delete", { target: deleteId, extra: { title } })
   }
 
   const columns = [
+    {
+      id: "select",
+      header: () => (
+        <Checkbox
+          checked={selectAllCheckboxState}
+          onCheckedChange={toggleSelectAllFiltered}
+          aria-label="Seleccionar tots els events filtrats"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={selectedIds.has(row.original.id)}
+          onCheckedChange={() => toggleSelectOne(row.original.id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Seleccionar event"
+        />
+      ),
+    },
     { accessorKey: "title", header: "Nom" },
     { accessorKey: "lloc", header: "Lloc" },
+    {
+      id: "tipusPista",
+      header: "Pista",
+      cell: ({ row }) => {
+        const info = pistaInfo(row.original.tipusPista)
+        if (!info) return <span className="text-xs text-muted-foreground">—</span>
+        const Icon = info.icon
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-medium">
+            <Icon className="h-3 w-3" />
+            {info.label}
+          </span>
+        )
+      },
+    },
     { accessorKey: "link", header: "Enllaç" },
     {
       accessorKey: "categories",
@@ -293,6 +486,68 @@ export default function EventsSection() {
         </Button>
       </div>
 
+      {/* BARRA DE SELECCIÓ EN MASSA */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-primary/5 p-3">
+          <span className="text-sm font-medium">
+            {selectedIds.size} event{selectedIds.size > 1 ? "s" : ""} seleccionat{selectedIds.size > 1 ? "s" : ""}
+          </span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Select onValueChange={bulkSetTipusPista} disabled={bulkLoading}>
+              <SelectTrigger className="h-8 w-40 text-xs">
+                <SelectValue placeholder="Marcar pista..." />
+              </SelectTrigger>
+              <SelectContent>
+                {TIPUS_PISTA.map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Popover open={bulkCatOpen} onOpenChange={setBulkCatOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" disabled={bulkLoading}>
+                  Categories
+                  <ChevronDown className="ml-1 h-3 w-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-3" align="end">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
+                  Categories <span className="font-normal">(buit = general)</span>
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {TOTES_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => toggleBulkCategoria(cat)}
+                      className={`rounded-full border-2 px-2.5 py-0.5 text-xs font-semibold transition-all ${
+                        bulkCategories.includes(cat)
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                <Button size="sm" className="w-full" disabled={bulkLoading} onClick={bulkSetCategories}>
+                  Aplicar a seleccionats
+                </Button>
+              </PopoverContent>
+            </Popover>
+
+            <Button size="sm" variant="destructive" disabled={bulkLoading} onClick={() => setBulkDeleteConfirm(true)}>
+              Eliminar seleccionats
+            </Button>
+            <Button size="sm" variant="ghost" disabled={bulkLoading} onClick={clearSelection}>
+              <X className="mr-1 h-3 w-3" />
+              Netejar selecció
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* FILTRES */}
       <div className="mb-4 rounded-lg border bg-muted/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -338,6 +593,17 @@ export default function EventsSection() {
               </SelectContent>
             </Select>
           )}
+
+          {/* Filtre tipus de pista */}
+          <Select value={filters.tipusPista} onValueChange={(v) => setFilters({ ...filters, tipusPista: v })}>
+            <SelectTrigger><SelectValue placeholder="Pista" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tots">Tots els tipus</SelectItem>
+              {TIPUS_PISTA.map(p => (
+                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <div className="flex gap-2">
             <Popover>
@@ -432,6 +698,28 @@ export default function EventsSection() {
               </PopoverContent>
             </Popover>
 
+            {/* Tipus de pista */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Tipus de pista</p>
+              <div className="flex gap-2">
+                {TIPUS_PISTA.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm({ ...form, tipusPista: value })}
+                    className={`flex items-center gap-1.5 rounded-full border-2 px-3 py-1 text-xs font-semibold transition-all ${
+                      form.tipusPista === value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-muted-foreground/30 text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Selector de categories de l'event */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">
@@ -441,6 +729,7 @@ export default function EventsSection() {
                 {TOTES_CATEGORIES.map(cat => (
                   <button
                     key={cat}
+                    type="button"
                     onClick={() => toggleCategoria(cat)}
                     className={`rounded-full border-2 px-3 py-1 text-xs font-semibold transition-all ${
                       form.categories.includes(cat)
@@ -473,6 +762,25 @@ export default function EventsSection() {
           <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel className="w-full sm:w-auto">Cancel·lar</AlertDialogCancel>
             <AlertDialogAction className="w-full sm:w-auto bg-red-600 hover:bg-red-700" onClick={confirmDelete}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteConfirm} onOpenChange={(v) => !bulkLoading && setBulkDeleteConfirm(v)}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar {selectedIds.size} event{selectedIds.size > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={bulkLoading} className="w-full sm:w-auto">Cancel·lar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkLoading}
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
+              onClick={confirmBulkDelete}
+            >
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

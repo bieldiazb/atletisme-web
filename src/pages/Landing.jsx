@@ -1,9 +1,8 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { auth } from "../../firebaseClient"
-import { collection, getDocs, query, where, getDoc, doc } from "firebase/firestore"
-import { db } from "../../firebaseClient"
+import { entrarAmbCodi } from "@/lib/accesPares"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -31,11 +30,23 @@ import { UserX, Loader2 } from "lucide-react"
  *
  * Així un pare pot entrar amb el codi del seu fill (perfil individual)
  * o bé un entrenador/coordinador pot entrar amb el codi de la categoria.
+ *
+ * La validació real viu a src/lib/accesPares.js (entrarAmbCodi), compartida
+ * amb l'accés directe per enllaç/QR (AccesPerCodi.jsx) — aquest formulari és
+ * només la via manual per si algú prefereix teclejar el codi o ha perdut
+ * l'enllaç.
  */
+
+const ERROR_MESSAGES = {
+  empty:     { title: "Codi buit",         body: "Introdueix el codi per continuar." },
+  not_found: { title: "Codi no trobat",     body: "No hem trobat cap atleta ni categoria amb aquest codi." },
+  error:     { title: "Error de connexió",  body: "No s'ha pogut connectar. Torna-ho a provar." },
+}
 
 export default function Landing({ className }) {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Admin
   const [email, setEmail] = useState("")
@@ -45,6 +56,22 @@ export default function Landing({ className }) {
   const [code, setCode] = useState("")
   const [paresLoading, setParesLoading] = useState(false)
   const [paresError, setParesError] = useState(null)
+
+  // Si venim d'un enllaç/QR amb codi invàlid (AccesPerCodi.jsx ens ha
+  // redirigit amb ?error=...), mostrem el mateix missatge d'error que
+  // donaria el formulari manual.
+  useEffect(() => {
+    const err = searchParams.get("error")
+    if (err && ERROR_MESSAGES[err]) {
+      setParesError(err)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete("error")
+        return next
+      }, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /* ================= ADMIN ================= */
   const loginAdmin = async (e) => {
@@ -66,43 +93,12 @@ export default function Landing({ className }) {
     setParesError(null)
     if (!code.trim()) { setParesError("empty"); return }
 
-    const normalizedCode = code.trim().toUpperCase().replace(/\s+/g, "")
     setParesLoading(true)
-
-    try {
-      // ── 1. Comprova si és un codi de categoria (a config/codisAcces) ──────
-      const configSnap = await getDoc(doc(db, "config", "codisAcces"))
-      if (configSnap.exists()) {
-        const codisCategoria = configSnap.data() // { "Sub-10": "XXXX", "Sub-12": "YYYY" }
-        const categoriaEntry = Object.entries(codisCategoria).find(
-          ([, codi]) => codi?.toUpperCase() === normalizedCode
-        )
-        if (categoriaEntry) {
-          const [categoria] = categoriaEntry
-          // Accés per categoria → navega a /pares amb la categoria seleccionada
-          sessionStorage.setItem("paresCategoria", categoria)
-          sessionStorage.removeItem("athleteCode")
-          navigate("/pares")
-          return
-        }
-      }
-
-      // ── 2. Comprova si és un codi d'atleta individual (codiPublic) ─────────
-      const q = query(collection(db, "athletes"), where("codiPublic", "==", normalizedCode))
-      const snap = await getDocs(q)
-
-      if (snap.empty) {
-        setParesError("not_found")
-        setParesLoading(false)
-        return
-      }
-
-      // Accés individual → guarda el codi a localStorage (com abans)
-      localStorage.setItem("athleteCode", normalizedCode)
-      sessionStorage.removeItem("paresCategoria")
+    const resultat = await entrarAmbCodi(code)
+    if (resultat.ok) {
       navigate("/pares")
-    } catch {
-      setParesError("error")
+    } else {
+      setParesError(resultat.reason)
       setParesLoading(false)
     }
   }
@@ -112,13 +108,7 @@ export default function Landing({ className }) {
     if (paresError) setParesError(null)
   }
 
-  const errorMessages = {
-    empty:     { title: "Codi buit",         body: "Introdueix el codi per continuar." },
-    not_found: { title: "Codi no trobat",     body: "No hem trobat cap atleta ni categoria amb aquest codi." },
-    error:     { title: "Error de connexió",  body: "No s'ha pogut connectar. Torna-ho a provar." },
-  }
-
-  const currentError = paresError ? errorMessages[paresError] : null
+  const currentError = paresError ? ERROR_MESSAGES[paresError] : null
 
   return (
     <div className={cn("flex min-h-screen items-center justify-center px-4", className)}>

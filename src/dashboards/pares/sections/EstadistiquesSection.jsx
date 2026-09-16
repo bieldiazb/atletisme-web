@@ -28,6 +28,11 @@ import {
   BarChart2,
   Activity,
   Star,
+  UsersRound,
+  Home,
+  Sun,
+  TreePine,
+  Route,
 } from "lucide-react"
 
 import {
@@ -96,7 +101,16 @@ const TIPUS_EMOJI = {
   salt:       "🦘",
   llancament: "🎯",
   marxa:      "🚶",
+  relleus:    "🤝",
 }
+
+// Ha d'anar en línia amb el mateix llistat a EventsSection.jsx / CalendariSection.jsx.
+const TIPUS_PISTA = [
+  { value: "coberta", label: "Coberta", icon: Home },
+  { value: "aire_lliure", label: "Aire lliure", icon: Sun },
+  { value: "cross", label: "Cross", icon: TreePine },
+  { value: "marxa_ruta", label: "Marxa en ruta", icon: Route },
+]
 
 /* ================= CUSTOM TOOLTIP ================= */
 
@@ -112,31 +126,41 @@ function CustomTooltip({ active, payload, label, tipusPrimitiu }) {
 
 /* ================= COMPONENT ================= */
 
-export default function EstadistiquesSection({ athleteId }) {
+export default function EstadistiquesSection({ athleteId, temporada }) {
   const [marques, setMarques] = useState([])
   const [proves, setProves] = useState({})
   const [events, setEvents] = useState({})
   const [loading, setLoading] = useState(true)
   const [provaSeleccionada, setProvaSeleccionada] = useState(null)
+  const [pistaFilter, setPistaFilter] = useState("totes")
 
   useEffect(() => {
     if (!athleteId) return
     const load = async () => {
       setLoading(true)
-      const q = query(collection(db, "marques"), where("atletaId", "==", athleteId))
-      const snap = await getDocs(q)
-
-      const provesSnap = await getDocs(collection(db, "proves"))
-      const eventsSnap = await getDocs(collection(db, "events"))
+      const [snapInd, snapRelleu, provesSnap, eventsSnap] = await Promise.all([
+        getDocs(query(collection(db, "marques"), where("atletaId", "==", athleteId))),
+        getDocs(query(collection(db, "marques_relleu"), where("atletaIds", "array-contains", athleteId))),
+        getDocs(collection(db, "proves")),
+        getDocs(collection(db, "events")),
+      ])
 
       const provesMap = {}
       provesSnap.docs.forEach(d => (provesMap[d.id] = d.data()))
       const eventsMap = {}
       eventsSnap.docs.forEach(d => (eventsMap[d.id] = d.data()))
 
-      const data = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+      // Unim marques individuals i de relleu (mateixa forma: provaId, marca, data,
+      // eventId) perquè les estadístiques les tractin totes juntes. Només la
+      // temporada seleccionada, i hi afegim el tipus de pista de l'event perquè
+      // el filtre de pista hi pugui filtrar.
+      const individuals = snapInd.docs.map(d => ({ id: d.id, ...d.data(), esRelleu: false }))
+      const relleus = snapRelleu.docs.map(d => ({ id: d.id, ...d.data(), esRelleu: true }))
+
+      const data = [...individuals, ...relleus]
         .filter(m => m.data)
+        .filter(m => m.data.toDate().getFullYear() === temporada)
+        .map(m => ({ ...m, tipusPista: eventsMap[m.eventId]?.tipusPista ?? null }))
         .sort((a, b) => a.data.toDate() - b.data.toDate())
 
       setMarques(data)
@@ -152,56 +176,64 @@ export default function EstadistiquesSection({ athleteId }) {
       setLoading(false)
     }
     load()
-  }, [athleteId])
+  }, [athleteId, temporada])
 
   /* ===== DADES DERIVADES ===== */
 
+  // Marques (individuals + relleu) filtrades pel tipus de pista seleccionat.
+  const marquesFiltrades = useMemo(() => {
+    if (pistaFilter === "totes") return marques
+    return marques.filter(m => m.tipusPista === pistaFilter)
+  }, [marques, pistaFilter])
+
   // Llista de proves úniques amb registres
   const provesAmbDades = useMemo(() => {
-    const ids = [...new Set(marques.map(m => m.provaId))]
+    const ids = [...new Set(marquesFiltrades.map(m => m.provaId))]
     return ids
       .map(id => ({ id, ...proves[id] }))
       .filter(p => p.nom)
-  }, [marques, proves])
+  }, [marquesFiltrades, proves])
 
   // Evolució temporal de la prova seleccionada
   const evolucioData = useMemo(() => {
     if (!provaSeleccionada) return []
-    return marques
+    return marquesFiltrades
       .filter(m => m.provaId === provaSeleccionada)
       .map(m => ({
         label: m.data.toDate().toLocaleDateString("ca-ES", { day: "2-digit", month: "short" }),
         event: events[m.eventId]?.title ?? "—",
         value: parseMarca(m.marca),
         marcaText: m.marca,
+        esRelleu: m.esRelleu,
       }))
-  }, [marques, provaSeleccionada, events])
+  }, [marquesFiltrades, provaSeleccionada, events])
 
   // Millors marques per prova (bar chart)
   const millorPerProva = useMemo(() => {
     const byProva = {}
-    marques.forEach(m => {
+    marquesFiltrades.forEach(m => {
       const val = parseMarca(m.marca)
       if (val == null) return
       const tipus = proves[m.provaId]?.tipus
       const nom = proves[m.provaId]?.nom
       if (!nom) return
       if (!byProva[m.provaId]) {
-        byProva[m.provaId] = { nom, tipus, value: val, marcaRef: m.marca }
+        byProva[m.provaId] = { nom, tipus, value: val, marcaRef: m.marca, esRelleu: m.esRelleu }
       } else {
         const isTem = isTempsProva(tipus, m.marca)
         if (isTem ? val < byProva[m.provaId].value : val > byProva[m.provaId].value) {
           byProva[m.provaId].value = val
+          byProva[m.provaId].esRelleu = m.esRelleu
         }
       }
     })
     return Object.values(byProva)
-  }, [marques, proves])
+  }, [marquesFiltrades, proves])
 
   // Activitat per mes (quantes marques)
   const activitatMensual = useMemo(() => {
     const byMonth = {}
-    marques.forEach(m => {
+    marquesFiltrades.forEach(m => {
       const d = m.data.toDate()
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
       const label = d.toLocaleDateString("ca-ES", { month: "short", year: "2-digit" })
@@ -209,7 +241,7 @@ export default function EstadistiquesSection({ athleteId }) {
       byMonth[key].count++
     })
     return Object.values(byMonth)
-  }, [marques])
+  }, [marquesFiltrades])
 
   const provaActual = proves[provaSeleccionada]
   const primeraMaraProva = evolucioData[0]?.marcaText ?? null
@@ -240,7 +272,7 @@ export default function EstadistiquesSection({ athleteId }) {
   if (marques.length === 0) return (
     <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
       <BarChart2 className="h-12 w-12 opacity-30" />
-      <p className="text-sm">Sense dades per mostrar estadístiques.</p>
+      <p className="text-sm">Sense dades per mostrar estadístiques de la temporada {temporada}.</p>
     </div>
   )
 
@@ -248,15 +280,43 @@ export default function EstadistiquesSection({ athleteId }) {
     <div className="space-y-6">
 
       {/* HEADER */}
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-primary/10 p-3">
-          <BarChart2 className="h-6 w-6 text-primary" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-primary/10 p-3">
+            <BarChart2 className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black">Estadístiques</h2>
+            <p className="text-sm text-muted-foreground">Evolució i millors marques{marques.some(m => m.esRelleu) ? " (individuals i relleus)" : ""}</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-2xl font-black">Estadístiques</h2>
-          <p className="text-sm text-muted-foreground">Evolució i millors marques</p>
-        </div>
+
+        {/* Filtre per tipus de pista */}
+        <Select value={pistaFilter} onValueChange={setPistaFilter}>
+          <SelectTrigger className="w-full sm:w-44 rounded-xl">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="totes">Totes les pistes</SelectItem>
+            {TIPUS_PISTA.map(p => (
+              <SelectItem key={p.value} value={p.value}>
+                <span className="inline-flex items-center gap-1.5">
+                  <p.icon className="h-3.5 w-3.5" />
+                  {p.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {marquesFiltrades.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <BarChart2 className="h-12 w-12 opacity-30" />
+          <p className="text-sm">Cap marca amb aquest tipus de pista.</p>
+        </div>
+      ) : (
+      <>
 
       {/* ===== EVOLUCIÓ PER PROVA ===== */}
       <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
@@ -287,13 +347,17 @@ export default function EstadistiquesSection({ athleteId }) {
               <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-center">
                 <p className="text-xs text-amber-600 font-semibold mb-1">🥇 Millor</p>
                 <p className="text-xl font-black text-amber-700">{millorMarca?.marcaText}</p>
-                <p className="text-xs text-amber-500 truncate mt-0.5">{millorMarca?.event}</p>
+                <p className="text-xs text-amber-500 truncate mt-0.5">
+                  {millorMarca?.esRelleu ? "🤝 " : ""}{millorMarca?.event}
+                </p>
               </div>
               {/* Última marca */}
               <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-center">
                 <p className="text-xs text-blue-600 font-semibold mb-1">⏱ Última</p>
                 <p className="text-xl font-black text-blue-700">{ultimaMarca?.marcaText}</p>
-                <p className="text-xs text-blue-500 truncate mt-0.5">{ultimaMarca?.label}</p>
+                <p className="text-xs text-blue-500 truncate mt-0.5">
+                  {ultimaMarca?.esRelleu ? "🤝 " : ""}{ultimaMarca?.label}
+                </p>
               </div>
               {/* Tendència */}
               <div className={`rounded-xl border px-4 py-3 text-center ${
@@ -383,7 +447,15 @@ export default function EstadistiquesSection({ athleteId }) {
                   </div>
                   <span className="text-base">{emoji}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">{p.nom}</p>
+                    <p className="font-semibold text-sm flex items-center gap-1.5">
+                      {p.nom}
+                      {p.esRelleu && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-medium px-1.5 py-0.5">
+                          <UsersRound className="h-2.5 w-2.5" />
+                          relleu
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground capitalize">{p.tipus}</p>
                   </div>
                   <p className="font-black text-primary text-lg flex-shrink-0">
@@ -432,6 +504,9 @@ export default function EstadistiquesSection({ athleteId }) {
             </ResponsiveContainer>
           </div>
         </div>
+      )}
+
+      </>
       )}
 
     </div>

@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom"
 import Landing from "./pages/Landing"
 import Admin from "./pages/Admin"
 import Pares from "./pages/Pares"
+import AccesPerCodi from "./pages/AccesPerCodi"
 import AdminRoute from "./routes/AdminRoute"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -21,6 +22,9 @@ export default function App() {
         />
 
         <Route path="/pares" element={<Pares />} />
+
+        {/* Accés directe per enllaç/QR (WhatsApp, carnet imprès...) — mateix codi que el login manual */}
+        <Route path="/acces/:codi" element={<AccesPerCodi />} />
       </Routes>
 
       {/* 🔥 SEMPRE FORA DE <Routes> */}

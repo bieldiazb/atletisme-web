@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-import { Activity, Calendar, Filter, X, Zap, Target } from "lucide-react"
+import { Activity, Calendar, Filter, X, Zap, Target, UsersRound } from "lucide-react"
 
 const TIPUS_EMOJI = {
   velocitat: "⚡",
@@ -41,6 +41,7 @@ const TIPUS_COLOR = {
 
 export default function ResultatsSection({ athleteId }) {
   const [rows, setRows] = useState([])
+  const [relleus, setRelleus] = useState([])
   const [loading, setLoading] = useState(false)
   const [tipusFilter, setTipusFilter] = useState("tots")
   const [provaFilter, setProvaFilter] = useState("totes")
@@ -49,12 +50,23 @@ export default function ResultatsSection({ athleteId }) {
     if (!athleteId) return
     const load = async () => {
       setLoading(true)
+
       const q = query(
         collection(db, "marques"),
         where("atletaId", "==", athleteId),
         orderBy("data", "desc")
       )
-      const snap = await getDocs(q)
+      const qRelleu = query(collection(db, "marques_relleu"), where("atletaIds", "array-contains", athleteId))
+
+      const [snap, relleuSnap, athletesSnap] = await Promise.all([
+        getDocs(q),
+        getDocs(qRelleu),
+        getDocs(collection(db, "athletes")),
+      ])
+
+      const athletesMap = {}
+      athletesSnap.docs.forEach(d => (athletesMap[d.id] = d.data().nom))
+
       const data = await Promise.all(
         snap.docs.map(async d => {
           const m = d.data()
@@ -74,6 +86,30 @@ export default function ResultatsSection({ athleteId }) {
         })
       )
       setRows(data)
+
+      // Marques de relleu on hi participa aquest atleta — mostrem els 4 (o els
+      // que siguin) integrants de l'equip, no només la marca individual.
+      const dataRelleu = await Promise.all(
+        relleuSnap.docs.map(async d => {
+          const m = d.data()
+          const provaSnap = await getDoc(doc(db, "proves", m.provaId))
+          const eventSnap = await getDoc(doc(db, "events", m.eventId))
+          return {
+            id: d.id,
+            prova: provaSnap.exists() ? provaSnap.data().nom : "—",
+            marca: m.marca,
+            event: eventSnap.exists() ? eventSnap.data().title : "—",
+            dataObj: m.data?.toDate ? m.data.toDate() : null,
+            data: m.data?.toDate
+              ? m.data.toDate().toLocaleDateString("ca-ES", { day: "2-digit", month: "short", year: "numeric" })
+              : "—",
+            integrants: (m.atletaIds ?? []).map(id => ({ id, nom: athletesMap[id] ?? "—" })),
+          }
+        })
+      )
+      dataRelleu.sort((a, b) => (b.dataObj?.getTime() ?? 0) - (a.dataObj?.getTime() ?? 0))
+      setRelleus(dataRelleu)
+
       setLoading(false)
     }
     load()
@@ -103,7 +139,7 @@ export default function ResultatsSection({ athleteId }) {
     </div>
   )
 
-  if (rows.length === 0) return (
+  if (rows.length === 0 && relleus.length === 0) return (
     <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
       <Activity className="h-12 w-12 opacity-30" />
       <p className="text-sm">Encara no hi ha marques registrades.</p>
@@ -121,12 +157,15 @@ export default function ResultatsSection({ athleteId }) {
         <div>
           <h2 className="text-2xl font-black">Resultats</h2>
           <p className="text-sm text-muted-foreground">
-            {filteredRows.length} {filteredRows.length === 1 ? "marca" : "marques"}
+            {filteredRows.length} {filteredRows.length === 1 ? "marca" : "marques"} individuals
             {hasFilters && ` (de ${rows.length} totals)`}
+            {relleus.length > 0 && ` · ${relleus.length} de relleu`}
           </p>
         </div>
       </div>
 
+      {rows.length === 0 ? null : (
+      <>
       {/* FILTRES */}
       <div className="rounded-2xl border bg-muted/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -236,6 +275,54 @@ export default function ResultatsSection({ athleteId }) {
           </tbody>
         </table>
       </div>
+      </>
+      )}
+
+      {/* RELLEUS — marca d'equip, es mostren els integrants (normalment 4) */}
+      {relleus.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 pt-2">
+            <UsersRound className="h-5 w-5 text-violet-500" />
+            <h3 className="font-bold text-lg">Relleus</h3>
+            <span className="text-xs text-muted-foreground">{relleus.length} {relleus.length === 1 ? "marca" : "marques"} d'equip</span>
+          </div>
+
+          <div className="space-y-3">
+            {relleus.map(r => (
+              <div key={r.id} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+                <div className="flex flex-wrap items-center gap-3 px-4 pt-4 pb-3">
+                  <span className="text-2xl">🏃‍♂️</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{r.prova}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.event}</p>
+                  </div>
+                  <p className="text-2xl font-black text-primary">{r.marca}</p>
+                </div>
+                <div className="border-t px-4 py-3 bg-muted/20 space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {r.integrants.map(p => (
+                      <span
+                        key={p.id}
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          p.id === athleteId
+                            ? "bg-violet-600 text-white"
+                            : "bg-violet-100 text-violet-700"
+                        }`}
+                      >
+                        {p.nom}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {r.data}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
     </div>
   )

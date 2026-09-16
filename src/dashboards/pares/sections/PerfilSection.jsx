@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table"
 
 import { Trophy, Activity, Calendar, Medal, Star, Zap, Target, TrendingUp } from "lucide-react"
+import { categoriaPerAny } from "@/lib/categoria"
 
 /* ================= HELPERS ================= */
 
@@ -29,16 +30,6 @@ function calcularEdat(date) {
   const m = today.getMonth() - date.getMonth()
   if (m < 0 || (m === 0 && today.getDate() < date.getDate())) age--
   return age
-}
-
-function categoriaPerAny(any) {
-  if (any >= 2019) return "Sub-8"
-  if (any >= 2017) return "Sub-10"
-  if (any >= 2015) return "Sub-12"
-  if (any >= 2013) return "Sub-14"
-  if (any >= 2011) return "Sub-16"
-  if (any >= 2009) return "Sub-18"
-  return "Absolut"
 }
 
 function parseMarca(marca) {
@@ -55,7 +46,7 @@ function esMillorMarca(a, b, tipus) {
   const vb = parseMarca(b.marca)
   if (va == null || vb == null) return false
   if (["velocitat", "fons", "marxa"].includes(tipus)) return va < vb
-  if (["salt", "llancament"].includes(tipus)) return va > vb
+  if (["salt", "llançament"].includes(tipus)) return va > vb
   return false
 }
 
@@ -83,7 +74,7 @@ function getCategoryColor(cat) {
 
 /* ================= COMPONENT ================= */
 
-export default function PerfilSection({ athleteId }) {
+export default function PerfilSection({ athleteId, temporada }) {
   const [athlete, setAthlete] = useState(null)
   const [stats, setStats] = useState(null)
   const [bestMarks, setBestMarks] = useState([])
@@ -104,7 +95,10 @@ export default function PerfilSection({ athleteId }) {
 
       const q = query(collection(db, "marques"), where("atletaId", "==", athleteId))
       const marquesSnap = await getDocs(q)
-      const marques = marquesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Només les marques de la temporada seleccionada (any natural de la data).
+      const marques = marquesSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(m => m.data?.toDate && m.data.toDate().getFullYear() === temporada)
 
       const provesSnap = await getDocs(collection(db, "proves"))
       const eventsSnap = await getDocs(collection(db, "events"))
@@ -166,7 +160,7 @@ export default function PerfilSection({ athleteId }) {
       setLoading(false)
     }
     load()
-  }, [athleteId])
+  }, [athleteId, temporada])
 
   if (loading) return (
     <div className="flex items-center justify-center py-24">
@@ -248,7 +242,7 @@ export default function PerfilSection({ athleteId }) {
         </div>
 
         {bestMarks.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8 text-sm">Sense marques registrades</p>
+          <p className="text-center text-muted-foreground py-8 text-sm">Sense marques registrades aquesta temporada</p>
         ) : (
           <div className="divide-y">
             {bestMarks.map((m, i) => (
@@ -284,7 +278,7 @@ export default function PerfilSection({ athleteId }) {
         </div>
 
         {history.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8 text-sm">Sense historial</p>
+          <p className="text-center text-muted-foreground py-8 text-sm">Sense historial aquesta temporada</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

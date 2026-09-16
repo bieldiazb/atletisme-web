@@ -1,14 +1,8 @@
 import { useEffect, useState } from "react"
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  Timestamp,
-} from "firebase/firestore"
+import { collection, getDocs, query, where, Timestamp } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 
-import { CalendarDays, MapPin, Clock, Trophy, Link } from "lucide-react"
+import { CalendarDays, MapPin, Clock, Trophy, Link, Home, Sun, TreePine, Route } from "lucide-react"
 
 function getDaysUntil(date) {
   const today = new Date()
@@ -42,24 +36,63 @@ function getUrgencyStyle(days) {
 
 const MONTHS_CA = ["GEN","FEB","MAR","ABR","MAI","JUN","JUL","AGO","SET","OCT","NOV","DES"]
 
-export default function CalendariSection() {
+// Ha d'anar en línia amb el mateix llistat a EventsSection.jsx.
+const TIPUS_PISTA = [
+  { value: "coberta", label: "Coberta", icon: Home },
+  { value: "aire_lliure", label: "Aire lliure", icon: Sun },
+  { value: "cross", label: "Cross", icon: TreePine },
+  { value: "marxa_ruta", label: "Marxa en ruta", icon: Route },
+]
+function pistaInfo(value) {
+  return TIPUS_PISTA.find((p) => p.value === value) ?? null
+}
+
+// categories: totes les categories dels germans amb accés amb aquest codi
+// (així es veu un sol calendari combinat, encara que cada fill sigui d'una
+// categoria diferent). siblings: per etiquetar cada event amb a quin
+// fill/a afecta quan n'hi ha més d'un. Sense filtre de temporada — sempre
+// mostra les properes competicions, independentment de la temporada
+// seleccionada a Perfil/Estadístiques.
+export default function CalendariSection({ categories = [], siblings = [] }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const today = Timestamp.now()
-      const q = query(collection(db, "events"), where("date", ">=", today))
-      const snap = await getDocs(q)
-      const data = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => a.date.toDate() - b.date.toDate())
-      setEvents(data)
-      setLoading(false)
+      setError(false)
+      try {
+        const today = Timestamp.now()
+        const q = query(collection(db, "events"), where("date", ">=", today))
+        const snap = await getDocs(q)
+        const data = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          // Un event és visible si és general (sense categories assignades)
+          // o si inclou la categoria d'algun dels germans amb accés.
+          .filter(e => {
+            const cats = e.categories ?? []
+            return cats.length === 0 || cats.some(c => categories.includes(c))
+          })
+          .sort((a, b) => a.date.toDate() - b.date.toDate())
+        setEvents(data)
+      } catch {
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
-  }, [])
+  }, [categories.join(",")])
+
+  // Per a cada event amb categories específiques, quins germans l'afecten
+  // (només té sentit mostrar-ho si hi ha més d'un fill amb accés).
+  const germansDe = (event) => {
+    if (siblings.length < 2) return []
+    const cats = event.categories ?? []
+    if (cats.length === 0) return []
+    return siblings.filter(s => cats.includes(s.categoria))
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center py-24">
@@ -67,6 +100,13 @@ export default function CalendariSection() {
         <div className="h-10 w-10 rounded-full border-4 border-primary border-t-transparent animate-spin" />
         <p className="text-sm text-muted-foreground">Carregant competicions…</p>
       </div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+      <CalendarDays className="h-12 w-12 opacity-30" />
+      <p className="text-sm">No s'han pogut carregar les competicions. Torna-ho a provar.</p>
     </div>
   )
 
@@ -97,6 +137,7 @@ export default function CalendariSection() {
           const date = event.date.toDate()
           const days = getDaysUntil(date)
           const style = getUrgencyStyle(days)
+          const germans = germansDe(event)
 
           return (
             <div
@@ -142,7 +183,29 @@ export default function CalendariSection() {
                         {event.lloc}
                       </span>
                     )}
+                    {(() => {
+                      const pista = pistaInfo(event.tipusPista)
+                      if (!pista) return null
+                      const PistaIcon = pista.icon
+                      return (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-medium">
+                          <PistaIcon className="h-3 w-3" />
+                          {pista.label}
+                        </span>
+                      )
+                    })()}
                   </div>
+
+                  {/* Quins germans afecta aquest event (només si n'hi ha més d'un i l'event és d'una categoria concreta) */}
+                  {germans.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {germans.map(g => (
+                        <span key={g.id} className="rounded-full bg-violet-100 text-violet-700 text-xs px-2 py-0.5 font-medium">
+                          {g.nom}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Urgency pill */}

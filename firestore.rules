@@ -1,0 +1,181 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────
+// ATENCIÓ (llegeix abans de desplegar):
+// Aquest fitxer s'ha escrit basant-se en tot el que s'ha après del codi
+// d'aquesta app durant aquesta conversa (quines col·leccions es lleigen amb
+// o sense autenticació, quines Cloud Functions ja fan de guarda per les
+// accions sensibles, etc.) — però NO s'ha pogut comparar amb les regles que
+// hi ha desplegades ara mateix a producció (sense accés a la consola de
+// Firebase ni xarxa cap a Firestore des d'aquest entorn).
+//
+// Abans de publicar-ho:
+//   1. Obre la consola de Firebase → Firestore Database → Regles → Playground
+//      i prova-hi els casos clau: login de pares (lectura d'"athletes" sense
+//      autenticar), un admin creant un usuari, un entrenador passant llista,
+//      un pare veient el calendari.
+//   2. Només quan estiguis satisfet, desplega amb:
+//        firebase deploy --only firestore:rules
+// ─────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function adminDocExists() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function adminData() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data;
+    }
+    // "Staff" = qualsevol admin o entrenador donat d'alta (té document a
+    // "admins"), igual que AdminRoute.jsx decideix qui entra a /admin.
+    function isStaff() {
+      return isSignedIn() && adminDocExists();
+    }
+    function isAdminRole() {
+      return isStaff() && adminData().rol == "admin";
+    }
+    function isDeveloperRole() {
+      return isStaff() && adminData().isDeveloper == true;
+    }
+
+    // ── Perfils admin / entrenador / developer ──────────────────────────
+    // Lectura: tot el staff (AdminsSection ja mostra el llistat sencer
+    // fins i tot als entrenadors, que només poden editar el seu propi).
+    // Les accions sensibles (crear, eliminar, desactivar accés, canviar
+    // email, concedir/treure developer) sempre passen per les Cloud
+    // Functions amb Admin SDK — no passen per aquestes regles. Aquí només
+    // cal cobrir les escriptures normals del client: un admin editant
+    // qualsevol perfil, o algú editant el seu propi (nom, categories...).
+    // Camps de permisos personalitzats (setembre 2026):
+    //   permisosVistes: string[] — quins items del menú veu aquest usuari en
+    //     concret; si no existeix, es manté el comportament per defecte
+    //     segons el rol (vegeu UserContext.potVeureItem).
+    //   potGestionar: string[] — (només admins) uids d'entrenadors que
+    //     aquest admin pot gestionar (és a dir, editar-los permisosVistes).
+    // A baix es tracten a part perquè la gràcia de la delegació és que no
+    // qualsevol admin els pugui tocar només per ser admin — si no, seria
+    // maquillatge de la UI i cap restricció real.
+    function afectaNomes(camps) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(camps);
+    }
+    function potGestionarEntrenador(uidObjectiu) {
+      return isAdminRole()
+        && resource.data.get('rol', 'admin') == 'entrenador'
+        && uidObjectiu in adminData().get('potGestionar', []);
+    }
+
+    match /admins/{uid} {
+      allow read: if isStaff();
+
+      // Creació: com sempre, qualsevol admin complet — però mai amb
+      // potGestionar ja preomplert (només es concedeix des d'una
+      // actualització posterior, feta pel developer).
+      allow create: if isAdminRole() && !("potGestionar" in request.resource.data);
+
+      // Escriptura general (nom, rol, categories, email, disabled...): com
+      // sempre, un admin complet pot editar qualsevol perfil i tothom pot
+      // editar el seu — sempre que la crida no toqui els dos camps de
+      // permisos, que tenen les seves pròpies regles just a sota.
+      allow update: if (isAdminRole() || request.auth.uid == uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["permisosVistes", "potGestionar"]);
+
+      // potGestionar: només developer el pot escriure.
+      allow update: if isDeveloperRole() && afectaNomes(["potGestionar"]);
+
+      // permisosVistes: developer sempre, o un admin amb gestió delegada
+      // però només sobre un entrenador que tingui assignat.
+      allow update: if afectaNomes(["permisosVistes"])
+        && (isDeveloperRole() || potGestionarEntrenador(uid));
+
+      allow delete: if false; // sempre via deleteAdminUser (Cloud Function)
+    }
+
+    // ── Atletes ──────────────────────────────────────────────────────────
+    // IMPORTANT: el login de pares (Landing.jsx) consulta aquesta col·lecció
+    // SENSE autenticar-se (busca l'atleta pel codi d'accés dels pares), així
+    // que la lectura ha de quedar oberta perquè el login segueixi funcionant.
+    // Precisament per això no s'hi ha de guardar mai res sensible — les
+    // observacions (al·lèrgies, notes de l'entrenador) viuen a part, a
+    // "athlete_notes", que sí que és privada.
+    match /athletes/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // ── Observacions d'atletes (al·lèrgies, notes de l'entrenador) ──────
+    // Col·lecció a part, NOMÉS per a staff — mai pública.
+    match /athlete_notes/{athleteId} {
+      allow read, write: if isStaff();
+    }
+
+    // ── Proves i events ──────────────────────────────────────────────────
+    // Lectura pública: el calendari de pares i les marques dels fills es
+    // veuen sense que els pares s'hagin autenticat amb Firebase Auth.
+    match /proves/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    match /events/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    match /marques/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    match /marques_relleu/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // ── Assistència: només staff — els pares no ho veuen enlloc ─────────
+    match /assistencies/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // ── Equip òptim (eina de planificació de l'equip): només staff ──────
+    match /equip_optim/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // ── Codis d'accés de categoria (config/codisAcces): lectura pública
+    // (login de pares), escriptura només admin ──────────────────────────
+    // Excepció: "permisosDefault" (valors per defecte de permisosVistes per
+    // rol admin/entrenador — vegeu UserContext.potVeureItem i
+    // PermisosVistesSection.jsx) decideix què veu tothom que no tingui
+    // personalitzat, així que —igual que potGestionar/permisosVistes a
+    // "admins"— només el developer el pot escriure, no qualsevol admin.
+    match /config/{id} {
+      allow read: if true;
+      allow write: if isAdminRole() && id != "permisosDefault";
+    }
+    match /config/permisosDefault {
+      allow read: if true;
+      allow write: if isDeveloperRole();
+    }
+
+    // ── Registre d'auditoria: només developers el poden llegir des de
+    // l'app. Les 5 accions sensibles de Firebase Auth (crear/eliminar
+    // usuari, desactivar accés, canviar email, rol developer) hi escriuen
+    // amb Admin SDK des de les Cloud Functions — no passen per aquí.
+    // El CRUD normal (atletes, marques, marques de relleu, events) hi
+    // escriu directament des del client, per això cal permetre "create" a
+    // qualsevol membre de l'staff — però mai "update"/"delete", perquè un
+    // cop escrit un registre no s'ha de poder tocar ni esborrar (ni tan
+    // sols un developer).
+    match /audit_logs/{id} {
+      allow read: if isDeveloperRole();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    // Per defecte, tot el que no s'hagi cobert explícitament queda tancat.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

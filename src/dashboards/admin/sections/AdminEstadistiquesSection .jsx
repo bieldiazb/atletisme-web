@@ -7,6 +7,7 @@ import {
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { categoriaPerAny } from "@/lib/categoria"
 
 import {
   LineChart,
@@ -86,17 +87,7 @@ function calcTendencia(data, tipusPrimitiu) {
   return (tipusPrimitiu === "temps" ? first > last : last > first) ? "up" : "down"
 }
 
-function categoriaPerAny(any) {
-  if (any >= 2019) return "Sub-8"
-  if (any >= 2017) return "Sub-10"
-  if (any >= 2015) return "Sub-12"
-  if (any >= 2013) return "Sub-14"
-  if (any >= 2011) return "Sub-16"
-  if (any >= 2009) return "Sub-18"
-  return "Absolut"
-}
-
-const TIPUS_EMOJI = { velocitat:"⚡", fons:"🏃", salt:"🦘", llancament:"🎯", marxa:"🚶" }
+const TIPUS_EMOJI = { velocitat:"⚡", fons:"🏃", salt:"🦘", "llançament":"🎯", marxa:"🚶" }
 
 function CustomTooltip({ active, payload, label, tipusPrimitiu }) {
   if (!active || !payload?.length) return null
@@ -123,6 +114,7 @@ export default function AdminEstadistiquesSection() {
   // Selectors
   const [atletaSeleccionat, setAtletaSeleccionat] = useState(null)
   const [provaSeleccionada, setProvaSeleccionada] = useState(null)
+  const [pistaFiltre, setPistaFiltre] = useState("totes") // "totes" | "coberta" | "aire_lliure"
 
   /* ===== CÀRREGA GLOBAL ===== */
   useEffect(() => {
@@ -197,10 +189,11 @@ export default function AdminEstadistiquesSection() {
 
   /* ===== DADES DERIVADES PER L'ATLETA SELECCIONAT ===== */
 
-  const marquesAtleta = useMemo(
-    () => allMarques[atletaSeleccionat] ?? [],
-    [allMarques, atletaSeleccionat]
-  )
+  const marquesAtleta = useMemo(() => {
+    const totes = allMarques[atletaSeleccionat] ?? []
+    if (pistaFiltre === "totes") return totes
+    return totes.filter((m) => eventsMap[m.eventId]?.tipusPista === pistaFiltre)
+  }, [allMarques, atletaSeleccionat, pistaFiltre, eventsMap])
 
   const provesAmbDades = useMemo(() => {
     const ids = [...new Set(marquesAtleta.map(m => m.provaId))]
@@ -316,6 +309,20 @@ export default function AdminEstadistiquesSection() {
                   </SelectItem>
                 )
               })}
+            </SelectContent>
+          </Select>
+
+          {/* Filtre per tipus de pista — afecta totes les dades i gràfics de sota */}
+          <Select value={pistaFiltre} onValueChange={setPistaFiltre}>
+            <SelectTrigger className="w-full sm:w-48 rounded-xl">
+              <SelectValue placeholder="Pista" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="totes">Tots els tipus</SelectItem>
+              <SelectItem value="coberta">Coberta</SelectItem>
+              <SelectItem value="aire_lliure">Aire lliure</SelectItem>
+              <SelectItem value="cross">Cross</SelectItem>
+              <SelectItem value="marxa_ruta">Marxa en ruta</SelectItem>
             </SelectContent>
           </Select>
 

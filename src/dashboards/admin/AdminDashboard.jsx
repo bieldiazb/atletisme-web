@@ -9,10 +9,17 @@ import { AppSidebar } from "@/components/ui/sidebar/AppSidebar"
 import { adminMenu } from "@/components/ui/sidebar/admin.menu"
 
 import AthletesSection       from "./sections/AthletesSection"
+import PassarLlistaSection   from "./sections/PassarLlistaSection"
+import RegistreAssistenciaSection from "./sections/RegistreAssistenciaSection"
 import EventsSection         from "./sections/EventsSection"
 import MarquesSection        from "./sections/MarquesSection"
+import MarquesRelleuSection  from "./sections/MarquesRelleuSection"
 import ProvesSection         from "./sections/ProvesSections"
 import AdminsSection         from "./sections/AdminsSection"
+import AuditLogSection       from "./sections/AuditLogSection"
+import ConfiguracioSection   from "./sections/ConfiguracioSection"
+import ImportarAtletesCsvSection from "./sections/ImportarAtletesCsvSection"
+import PermisosVistesSection from "./sections/PermisosVistesSection"
 import AdminEstadistiquesSection from "./sections/AdminEstadistiquesSection "
 import EquipOptimSection     from "./sections/EquipOptimSection"
 import ImportarResultatsPDF  from "./sections/ImportarResultatsPDF"
@@ -22,16 +29,20 @@ import { UserProvider, useUser } from "../../../UserContext"
 // ─── Contingut intern (ja dins del UserProvider) ─────────────────────────────
 
 function DashboardContent() {
-  const { esAdmin, categories, rol, nom, userData } = useUser()
+  const { esAdmin, esDeveloper, categories, rol, nom, userData, potVeureItem } = useUser()
   const [view, setView] = useState("athletes")
   const dashboardTitle = nom || "Admin Panel"
 
-  // Filtrem el menú: "create-admin" només visible per admins
-  const menuFiltrat = (adminMenu ?? []).filter(item => {
-    if (item.id === "create-admin" && !esAdmin) return false
-    return true
-  })
-  console.log("USERDATA COMPLET:", userData)
+  // Filtrem el menú item per item (potVeureItem, a UserContext): per defecte
+  // segons el rol (com sempre), però un developer pot personalitzar-ho per
+  // usuari des de "Permisos de visualització". Es treuen els grups que es
+  // quedin sense cap item visible.
+  const menuFiltrat = (adminMenu ?? [])
+    .map(grup => ({
+      ...grup,
+      items: grup.items.filter(item => potVeureItem(item, grup.adminOnly)),
+    }))
+    .filter(grup => grup.items.length > 0)
 
   return (
     <SidebarProvider>
@@ -40,7 +51,7 @@ function DashboardContent() {
         setView={setView}
         menu={menuFiltrat}
         title={dashboardTitle}
-        subtitle={rol === "admin" ? "Administrador" : `Entrenador ${categories.join(", ")}`}
+        subtitle={rol === "developer" ? "Desenvolupador" : rol === "admin" ? "Administrador" : `Entrenador ${categories.join(", ")}`}
         footer={
           !esAdmin && categories.length > 0 ? (
             <div className="px-4 py-3 border-t space-y-1">
@@ -65,8 +76,11 @@ function DashboardContent() {
 
         <div className="flex-1 overflow-auto p-6">
           {view === "athletes"      && <AthletesSection />}
+          {view === "assistencia"   && <PassarLlistaSection />}
+          {view === "registre-assistencia" && <RegistreAssistenciaSection />}
           {view === "calendar"      && <EventsSection />}
           {view === "marques"       && <MarquesSection />}
+          {view === "marques-relleu" && <MarquesRelleuSection />}
           {view === "proves"        && <ProvesSection />}
           {view === "estadistiques" && <AdminEstadistiquesSection />}
           {view === "equip"         && <EquipOptimSection />}
@@ -74,6 +88,10 @@ function DashboardContent() {
           {view === "import-results"    && <ImportarResultatsPDF />}
           {view === "importar-resultats" && <ImportarResultatsPDF />}
           {view === "create-admin"  && <AdminsSection />}
+          {view === "configuracio"  && <ConfiguracioSection />}
+          {view === "importar-atletes-csv" && <ImportarAtletesCsvSection />}
+          {view === "permisos-vistes" && <PermisosVistesSection />}
+          {view === "audit-log"     && <AuditLogSection />}
         </div>
       </SidebarInset>
     </SidebarProvider>

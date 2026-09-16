@@ -10,13 +10,16 @@ import {
   Timestamp,
   query,
   orderBy,
+  writeBatch,
 } from "firebase/firestore"
 
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { logAudit } from "@/lib/auditLog"
 
 import { Input } from "@/components/ui/input"
 import { DataTable } from "@/components/ui/data-table"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import {
   Command,
@@ -27,7 +30,7 @@ import {
 } from "@/components/ui/command"
 
 import { Button } from "@/components/ui/button"
-import { Check, ChevronsUpDown, ArrowDown01, ArrowUp01, Search, X } from "lucide-react"
+import { Check, ChevronsUpDown, ArrowDown01, ArrowUp01, Home, Sun, TreePine, Route, Search, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 import {
@@ -70,6 +73,18 @@ import { useToast } from "@/hooks/use-toast"
 
 const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
 
+// Ha d'anar en línia amb el mateix llistat a EventsSection.jsx — es guarda a
+// l'event i aquí només el llegim per mostrar-lo a cada marca.
+const TIPUS_PISTA = [
+  { value: "coberta", label: "Coberta", icon: Home },
+  { value: "aire_lliure", label: "Aire lliure", icon: Sun },
+  { value: "cross", label: "Cross", icon: TreePine },
+  { value: "marxa_ruta", label: "Marxa en ruta", icon: Route },
+]
+function pistaInfo(value) {
+  return TIPUS_PISTA.find((p) => p.value === value) ?? null
+}
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(
     window.matchMedia("(max-width: 640px)").matches
@@ -88,7 +103,7 @@ const getCognom = (nom) => nom?.split(" ").slice(1).join(" ").toUpperCase() ?? "
 export default function MarquesSection() {
   const { toast } = useToast()
   const isMobile = useIsMobile()
-  const { esAdmin, filtraCat, categories: catUsuari } = useUser()
+  const { esAdmin, filtraCat, categories: catUsuari, userData } = useUser()
 
   const [marques, setMarques] = useState([])
   const [athletes, setAthletes] = useState([])
@@ -99,6 +114,10 @@ export default function MarquesSection() {
   const [editing, setEditing] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
 
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
+
   const categoriesDisponibles = esAdmin ? TOTES_CATEGORIES : catUsuari
 
   const [filters, setFilters] = useState({
@@ -106,6 +125,7 @@ export default function MarquesSection() {
     provaId: "tots",
     eventId: "tots",
     categoria: "tots",
+    tipusPista: "tots",
     dataDes: null,
     dataFins: null,
   })
@@ -131,7 +151,7 @@ export default function MarquesSection() {
     const athletesMap = {}
     a.docs.forEach(d => (athletesMap[d.id] = { nom: d.data().nom, categoria: d.data().categoria }))
     const eventsMap = {}
-    e.docs.forEach(d => (eventsMap[d.id] = d.data().title))
+    e.docs.forEach(d => (eventsMap[d.id] = { title: d.data().title, tipusPista: d.data().tipusPista, lloc: d.data().lloc }))
     const provesMap = {}
     p.docs.forEach(d => (provesMap[d.id] = d.data().nom))
 
@@ -145,7 +165,9 @@ export default function MarquesSection() {
         ...d.data(),
         atletaNom: athletesMap[d.data().atletaId]?.nom,
         atletaCategoria: athletesMap[d.data().atletaId]?.categoria,
-        eventNom: eventsMap[d.data().eventId],
+        eventNom: eventsMap[d.data().eventId]?.title,
+        eventLloc: eventsMap[d.data().eventId]?.lloc,
+        tipusPista: eventsMap[d.data().eventId]?.tipusPista,
         provaNom: provesMap[d.data().provaId],
       }))
     )
@@ -170,6 +192,7 @@ export default function MarquesSection() {
       if (filters.provaId !== "tots" && m.provaId !== filters.provaId) return false
       if (filters.eventId !== "tots" && m.eventId !== filters.eventId) return false
       if (filters.categoria !== "tots" && m.atletaCategoria !== filters.categoria) return false
+      if (filters.tipusPista !== "tots" && m.tipusPista !== filters.tipusPista) return false
       const d = m.data?.toDate?.()
       if (d) {
         if (filters.dataDes && d < filters.dataDes) return false
@@ -188,11 +211,70 @@ export default function MarquesSection() {
     filters.provaId !== "tots" ||
     filters.eventId !== "tots" ||
     filters.categoria !== "tots" ||
+    filters.tipusPista !== "tots" ||
     filters.dataDes !== null ||
     filters.dataFins !== null
 
   const resetFilters = () =>
-    setFilters({ atletaId: "tots", provaId: "tots", eventId: "tots", categoria: "tots", dataDes: null, dataFins: null })
+    setFilters({ atletaId: "tots", provaId: "tots", eventId: "tots", categoria: "tots", tipusPista: "tots", dataDes: null, dataFins: null })
+
+  // Neteja la selecció d'ids que ja no existeixen
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const validIds = new Set(marques.map((m) => m.id))
+      const next = new Set([...prev].filter((id) => validIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [marques])
+
+  // --- Selecció en massa (només sobre les files que compleixen els filtres actuals) ---
+  const filteredIds = filteredMarques.map((m) => m.id)
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id))
+  const someFilteredSelected = filteredIds.some((id) => selectedIds.has(id))
+  const selectAllCheckboxState = allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allFilteredSelected) filteredIds.forEach((id) => next.delete(id))
+      else filteredIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const confirmBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      const BATCH_SIZE = 450
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db)
+        ids.slice(i, i + BATCH_SIZE).forEach((id) => batch.delete(doc(db, "marques", id)))
+        await batch.commit()
+      }
+      toast({ title: "Marques eliminades", description: `${ids.length} marca${ids.length > 1 ? "s" : ""} eliminada${ids.length > 1 ? "s" : ""} correctament` })
+      logAudit(userData, "marques.bulkDelete", { extra: { quantitat: ids.length } })
+      setBulkDeleteConfirm(false)
+      clearSelection()
+      load()
+    } catch {
+      toast({ variant: "destructive", title: "Error eliminant en massa", description: "No s'han pogut eliminar" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
 
   const openCreate = () => {
     setEditing(null)
@@ -229,25 +311,49 @@ export default function MarquesSection() {
       marca: form.marca,
       data: eventDate instanceof Timestamp ? eventDate : Timestamp.fromDate(eventDate.toDate()),
     }
+    const atletaNom = sortedAthletes.find((a) => a.id === form.atletaId)?.nom
+    const provaNom = proves.find((p) => p.id === form.provaId)?.nom
     if (editing) {
       await updateDoc(doc(db, "marques", editing.id), payload)
       toast({ title: "Marca editada", description: "Els canvis s'han desat correctament" })
+      logAudit(userData, "marques.update", { target: editing.id, extra: { atleta: atletaNom, prova: provaNom, marca: form.marca } })
     } else {
-      await addDoc(collection(db, "marques"), payload)
+      const ref = await addDoc(collection(db, "marques"), payload)
       toast({ title: "Marca creada", description: "La marca s'ha creat correctament" })
+      logAudit(userData, "marques.create", { target: ref.id, extra: { atleta: atletaNom, prova: provaNom, marca: form.marca } })
     }
     setOpen(false)
     load()
   }
 
   const confirmDelete = async () => {
+    const m = marques.find((row) => row.id === deleteId)
     await deleteDoc(doc(db, "marques", deleteId))
     setDeleteId(null)
     load()
     toast({ title: "Marca eliminada", description: "La marca s'ha eliminat correctament" })
+    logAudit(userData, "marques.delete", { target: deleteId, extra: { atleta: m?.atletaNom, prova: m?.provaNom, marca: m?.marca } })
   }
 
   const columns = [
+    {
+      id: "select",
+      header: () => (
+        <Checkbox
+          checked={selectAllCheckboxState}
+          onCheckedChange={toggleSelectAllFiltered}
+          aria-label="Seleccionar totes les marques filtrades"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={selectedIds.has(row.original.id)}
+          onCheckedChange={() => toggleSelectOne(row.original.id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Seleccionar marca"
+        />
+      ),
+    },
     { accessorKey: "atletaNom", header: "Atleta" },
     {
       accessorKey: "atletaCategoria",
@@ -258,7 +364,27 @@ export default function MarquesSection() {
     },
     { accessorKey: "provaNom", header: "Prova" },
     { accessorKey: "marca", header: "Marca" },
+    {
+      id: "tipusPista",
+      header: "Pista",
+      cell: ({ row }) => {
+        const info = pistaInfo(row.original.tipusPista)
+        if (!info) return <span className="text-xs text-muted-foreground">—</span>
+        const Icon = info.icon
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-medium">
+            <Icon className="h-3 w-3" />
+            {info.label}
+          </span>
+        )
+      },
+    },
     { accessorKey: "eventNom", header: "Event" },
+    {
+      accessorKey: "eventLloc",
+      header: "Localitat",
+      cell: ({ row }) => row.original.eventLloc || <span className="text-xs text-muted-foreground">—</span>,
+    },
     {
       accessorKey: "data",
       header: "Data",
@@ -294,6 +420,24 @@ export default function MarquesSection() {
           Nova marca
         </Button>
       </div>
+
+      {/* BARRA DE SELECCIÓ EN MASSA */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-primary/5 p-3">
+          <span className="text-sm font-medium">
+            {selectedIds.size} marca{selectedIds.size > 1 ? "es" : ""} seleccionada{selectedIds.size > 1 ? "s" : ""}
+          </span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button size="sm" variant="destructive" disabled={bulkLoading} onClick={() => setBulkDeleteConfirm(true)}>
+              Eliminar seleccionades
+            </Button>
+            <Button size="sm" variant="ghost" disabled={bulkLoading} onClick={clearSelection}>
+              <X className="mr-1 h-3 w-3" />
+              Netejar selecció
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* FILTRES */}
       <div className="mb-4 rounded-lg border bg-muted/30 p-4 space-y-3">
@@ -374,6 +518,17 @@ export default function MarquesSection() {
                     </span>
                   )}
                 </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtre tipus de pista */}
+          <Select value={filters.tipusPista} onValueChange={(v) => setFilters({ ...filters, tipusPista: v })}>
+            <SelectTrigger><SelectValue placeholder="Pista" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tots">Tots els tipus</SelectItem>
+              {TIPUS_PISTA.map(p => (
+                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -492,16 +647,20 @@ export default function MarquesSection() {
             <Select value={form.eventId} onValueChange={v => setForm({ ...form, eventId: v })}>
               <SelectTrigger><SelectValue placeholder="Event (opcional)" /></SelectTrigger>
               <SelectContent>
-                {events.map(e => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.title}
-                    {e.date?.toDate && (
-                      <span className="ml-2 text-muted-foreground text-xs">
-                        · {e.date.toDate().toLocaleDateString()}
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
+                {events.map(e => {
+                  const info = pistaInfo(e.tipusPista)
+                  return (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.title}
+                      {info && <span className="ml-2 text-muted-foreground text-xs">· {info.label}</span>}
+                      {e.date?.toDate && (
+                        <span className="ml-2 text-muted-foreground text-xs">
+                          · {e.date.toDate().toLocaleDateString()}
+                        </span>
+                      )}
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
 
@@ -525,6 +684,25 @@ export default function MarquesSection() {
           <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel className="w-full sm:w-auto">Cancel·lar</AlertDialogCancel>
             <AlertDialogAction className="w-full sm:w-auto bg-red-600 hover:bg-red-700" onClick={confirmDelete}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteConfirm} onOpenChange={(v) => !bulkLoading && setBulkDeleteConfirm(v)}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar {selectedIds.size} marca{selectedIds.size > 1 ? "es" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={bulkLoading} className="w-full sm:w-auto">Cancel·lar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkLoading}
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
+              onClick={confirmBulkDelete}
+            >
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react"
 import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { categoriaPerAny } from "@/lib/categoria"
 
 import {
   Select,
@@ -24,17 +25,6 @@ import { getPuntsFCA } from "@/lib/Fcapuntuacio"
    CONFIGURACIÓ DE CATEGORIES
    ───────────────────────────────────────────── */
 
-function categoriaAtleta(anyNaix) {
-  if (!anyNaix) return null
-  if (anyNaix >= 2019) return "Sub-8"
-  if (anyNaix >= 2017) return "Sub-10"
-  if (anyNaix >= 2015) return "Sub-12"
-  if (anyNaix >= 2013) return "Sub-14"
-  if (anyNaix >= 2011) return "Sub-16"
-  if (anyNaix >= 2009) return "Sub-18"
-  return "Absolut"
-}
-
 const PROVES_SUB10 = [
   { slot: "60mll",    clau: "60 mll",   label: "60 mll",       relleu: false },
   { slot: "400",      clau: "400 mll",  label: "400 mll",      relleu: false },
@@ -44,7 +34,8 @@ const PROVES_SUB10 = [
   { slot: "pes",      clau: "pes",      label: "Pes",          relleu: false },
   { slot: "vortex",   clau: "vortex",   label: "Vortex",       relleu: false },
   { slot: "alcada",   clau: "alçada",   label: "Alçada",       relleu: false },
-  { slot: "4x60",     clau: "60 mll",   label: "4×60m",        relleu: true, numAtletes: 4 },
+  { slot: "4x60",     clau: "60 mll",   nomRelleu: "4x60 mll", label: "4×60m",  relleu: true, numAtletes: 4 },
+  { slot: "4x200",    clau: "200 mll",  nomRelleu: "4x200",    label: "4×200m", relleu: true, numAtletes: 4 },
 ]
 
 const PROVES_SUB12 = [
@@ -60,13 +51,39 @@ const PROVES_SUB12 = [
   { slot: "120",      clau: "120 mll",  label: "120 mll",      relleu: false },
   { slot: "disc",     clau: "disc",     label: "Disc",         relleu: false },
   { slot: "perxa",    clau: "perxa",    label: "Perxa",        relleu: false },
-  { slot: "4x60",     clau: "60 mll",   label: "4×60m",        relleu: true, numAtletes: 4 },
-  { slot: "4x200",    clau: "200 mll",  label: "4×200m",       relleu: true, numAtletes: 4 },
+  { slot: "4x60",     clau: "60 mll",   nomRelleu: "4x60 mll", label: "4×60m",  relleu: true, numAtletes: 4 },
+  { slot: "4x200",    clau: "200 mll",  nomRelleu: "4x200",    label: "4×200m", relleu: true, numAtletes: 4 },
+]
+
+const PROVES_SUB14 = [
+  { slot: "60m",        clau: "60 mll",      label: "60 mll",           relleu: false },
+  { slot: "60mt",       clau: "60 mt",       label: "60m tanques",      relleu: false },
+  { slot: "80m",        clau: "80 mll",      label: "80 mll",           relleu: false },
+  { slot: "80mt",       clau: "80 mt",       label: "80m tanques",      relleu: false },
+  { slot: "150",        clau: "150 mll",     label: "150 mll",          relleu: false },
+  { slot: "200",        clau: "200 mll",     label: "200 mll",          relleu: false },
+  { slot: "220mt",      clau: "220 mt",      label: "220m tanques",     relleu: false },
+  { slot: "600",        clau: "600 mll",     label: "600 mll",          relleu: false },
+  { slot: "1000",       clau: "1000 mll",    label: "1.000 mll",        relleu: false },
+  { slot: "1000obs",    clau: "1000 m.obs",  label: "1.000m obstacles", relleu: false },
+  { slot: "3000",       clau: "3000 mll",    label: "3.000 mll",        relleu: false },
+  { slot: "2000m",      clau: "2000 mm",     label: "2.000m marxa",     relleu: false },
+  { slot: "javelina",   clau: "javelina",    label: "Javelina",         relleu: false },
+  { slot: "martell",    clau: "martell",     label: "Martell",          relleu: false },
+  { slot: "disc",       clau: "disc",        label: "Disc",             relleu: false },
+  { slot: "pes",        clau: "pes",         label: "Pes",              relleu: false },
+  { slot: "alcada",     clau: "alçada",      label: "Alçada",           relleu: false },
+  { slot: "llargada",   clau: "llargada",    label: "Llargada",         relleu: false },
+  { slot: "triplesalt", clau: "triple salt", label: "Triple salt",      relleu: false },
+  { slot: "perxa",      clau: "perxa",       label: "Perxa",            relleu: false },
+  { slot: "4x80",       clau: "80 mll",      nomRelleu: "4x80",   label: "4×80m",  relleu: true, numAtletes: 4 },
+  { slot: "4x200",      clau: "200 mll",     nomRelleu: "4x200",  label: "4×200m", relleu: true, numAtletes: 4 },
 ]
 
 const CATEGORIES = [
-  { key: "Sub-10", label: "Sub-10", proves: PROVES_SUB10 },
-  { key: "Sub-12", label: "Sub-12", proves: PROVES_SUB12 },
+  { key: "Sub-10", label: "Sub-10", proves: PROVES_SUB10, distincioPista: false },
+  { key: "Sub-12", label: "Sub-12", proves: PROVES_SUB12, distincioPista: true },
+  { key: "Sub-14", label: "Sub-14", proves: PROVES_SUB14, distincioPista: true },
 ]
 
 const COLOR_CAT = {
@@ -116,9 +133,17 @@ function esMillor(val, best, tipus) {
   return isTemps(tipus) ? val < best : val > best
 }
 
-function trobarProvaDB(clau, provesDB) {
+// Per defecte només busca entre proves individuals (exclou les marcades com a
+// relleu), perquè el "clau" d'un slot de relleu (ex: "80 mll") és el nom de la
+// prova individual que s'usa per rànquejar atletes — no s'ha de confondre amb
+// la prova de relleu real ("4x80") que viu a Firestore amb esRelleu: true.
+// Passa { relleu: true } quan vulguis trobar la prova de relleu real (per
+// exemple per llegir-ne la restricció de pista).
+function trobarProvaDB(clau, provesDB, { relleu = false } = {}) {
   const c = clau.toLowerCase()
-  return provesDB.find(p => p.nom?.toLowerCase().includes(c)) ?? null
+  return provesDB
+    .filter(p => !!p.esRelleu === relleu)
+    .find(p => p.nom?.toLowerCase().includes(c)) ?? null
 }
 
 /* ─────────────────────────────────────────────
@@ -198,10 +223,10 @@ function calcularAutoEquip(athletes, slotsProves, provesDB, millorMarcaMap) {
    SUBCOMPONENT: FILA PROVA INDIVIDUAL
    ───────────────────────────────────────────── */
 
-function ProvaRow({ slotDef, provaDB, assignacio, athletes, millorMarcaMap, onCanvi, atletesOcupats }) {
+function ProvaRow({ slotDef, provaDB, assignacio, athletes, millorMarcaMap, onCanvi, atletesOcupats, noDisponible, pistaKey }) {
   const atletaActual = athletes.find(a => a.id === assignacio?.atletaId)
   const anyNaix = atletaActual?.naixement?.toDate?.()?.getFullYear()
-  const cat = anyNaix ? categoriaAtleta(anyNaix) : null
+  const cat = anyNaix ? categoriaPerAny(anyNaix) : null
   const sexeAtleta = atletaActual?.sexe ?? null
   const initials = atletaActual?.nom?.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase()
   const esManual = assignacio && !assignacio.auto
@@ -216,6 +241,24 @@ function ProvaRow({ slotDef, provaDB, assignacio, athletes, millorMarcaMap, onCa
       .filter(Boolean)
       .sort((a, b) => isTemps(provaDB?.tipus) ? a.valor - b.valor : b.valor - a.valor)
   }, [athletes, provaDB, millorMarcaMap])
+
+  if (noDisponible) {
+    const altrePista = pistaKey === "coberta" ? "aire lliure" : "pista coberta"
+    return (
+      <div className="rounded-xl border border-dashed px-4 py-3 space-y-1 bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span>{TIPUS_EMOJI[provaDB?.tipus] || "🏅"}</span>
+          <p className="font-semibold text-sm flex-1 text-muted-foreground">{slotDef.label}</p>
+          <span className="text-xs font-semibold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
+            Només {altrePista}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Aquesta prova, per aquesta categoria, només es disputa a {altrePista}.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className={`rounded-xl border px-4 py-3 space-y-2 transition-colors ${
@@ -281,7 +324,7 @@ function ProvaRow({ slotDef, provaDB, assignacio, athletes, millorMarcaMap, onCa
           </SelectItem>
           {candidats.map(({ atleta, marca }, i) => {
             const anyA = atleta.naixement?.toDate?.()?.getFullYear()
-            const catA = anyA ? categoriaAtleta(anyA) : ""
+            const catA = anyA ? categoriaPerAny(anyA) : ""
             const ocupat = atletesOcupats?.has(atleta.id) && atleta.id !== assignacio?.atletaId
             // Punts FCA per a cada candidat al desplegable
             const puntsCandidatFCA = getPuntsFCA(String(marca), provaDB?.nom ?? "", atleta.sexe ?? "M")
@@ -320,7 +363,7 @@ function ProvaRow({ slotDef, provaDB, assignacio, athletes, millorMarcaMap, onCa
 function ReleuRow({ posicio, atletaId, athletes, provaDB, millorMarcaMap, onCanvi }) {
   const atletaActual = athletes.find(a => a.id === atletaId)
   const anyNaix = atletaActual?.naixement?.toDate?.()?.getFullYear()
-  const cat = anyNaix ? categoriaAtleta(anyNaix) : null
+  const cat = anyNaix ? categoriaPerAny(anyNaix) : null
   const initials = atletaActual?.nom?.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase()
   const marcaActual = provaDB ? millorMarcaMap[`${atletaId}_${provaDB.id}`]?.marca : null
 
@@ -380,7 +423,7 @@ function ReleuRow({ posicio, atletaId, athletes, provaDB, millorMarcaMap, onCanv
             <SelectItem value="buit">— Sense assignar</SelectItem>
             {candidats.map(({ atleta, marca }, i) => {
               const anyA = atleta.naixement?.toDate?.()?.getFullYear()
-              const catA = anyA ? categoriaAtleta(anyA) : ""
+              const catA = anyA ? categoriaPerAny(anyA) : ""
               const puntsFCA = getPuntsFCA(String(marca), provaDB?.nom ?? "", atleta.sexe ?? "M")
               return (
                 <SelectItem key={atleta.id} value={atleta.id}>
@@ -450,15 +493,27 @@ function ResumPuntsFCA({ assignacions, slotsIndividuals, athletes, provesDB }) {
    SUBCOMPONENT: BLOC SEXE + CATEGORIA
    ───────────────────────────────────────────── */
 
-function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarcaMap, onEquipChange }) {
+function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarcaMap, onEquipChange, pistaSufix = "", pistaLabel = null, pistaKey = null }) {
   const atletsCat = useMemo(() => athletes.filter(a => {
     const any = a.naixement?.toDate?.()?.getFullYear()
-    return a.sexe === sexeKey && categoriaAtleta(any) === catDef.key
+    return a.sexe === sexeKey && categoriaPerAny(any) === catDef.key
   }), [athletes, sexeKey, catDef.key])
 
   const provaDBPerSlot = useMemo(() => {
     const map = {}
     for (const slot of catDef.proves) map[slot.slot] = trobarProvaDB(slot.clau, provesDB)
+    return map
+  }, [catDef.proves, provesDB])
+
+  // Prova de relleu real (esRelleu: true) per a cada slot de relleu — només
+  // s'usa per llegir-ne la restricció de pista (pistaPerCategoria), no per
+  // rànquejar atletes (això segueix fent-ho provaDBPerSlot amb la marca individual).
+  const provaRelleuDBPerSlot = useMemo(() => {
+    const map = {}
+    for (const slot of catDef.proves) {
+      if (!slot.relleu) continue
+      map[slot.slot] = trobarProvaDB(slot.nomRelleu ?? slot.clau, provesDB, { relleu: true })
+    }
     return map
   }, [catDef.proves, provesDB])
 
@@ -501,7 +556,7 @@ function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarca
 
   useEffect(() => {
     if (!onEquipChange) return
-    onEquipChange(`${catDef.key}_${sexeKey}`, { assignacions, releus })
+    onEquipChange(`${catDef.key}_${sexeKey}${pistaSufix}`, { assignacions, releus })
   }, [assignacions, releus])
 
   const atletesOcupats = useMemo(() => {
@@ -513,9 +568,22 @@ function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarca
     )
   }, [assignacions, releus])
 
+  // Restricció de pista: pot venir definida per categoria a la prova
+  // (pistaPerCategoria), o com a camp antic global (noEsFaCoberta) per compatibilitat.
+  const noDisponibleSlot = (slotDef) => {
+    if (!pistaKey) return false
+    const provaDB = slotDef.relleu ? provaRelleuDBPerSlot[slotDef.slot] : provaDBPerSlot[slotDef.slot]
+    if (!provaDB) return false
+    const restriccio = provaDB.pistaPerCategoria?.[catDef.key]
+    if (restriccio) return restriccio !== pistaKey
+    if (provaDB.noEsFaCoberta) return pistaKey === "coberta"
+    return false
+  }
+
   const slotsIndividuals = catDef.proves.filter(s => !s.relleu)
   const slotsRelleu = catDef.proves.filter(s => s.relleu)
-  const cobertes = slotsIndividuals.filter(s => assignacions[s.slot]?.atletaId).length
+  const slotsIndividualsAplicables = slotsIndividuals.filter(s => !noDisponibleSlot(s))
+  const cobertes = slotsIndividualsAplicables.filter(s => assignacions[s.slot]?.atletaId).length
 
   const headerBg = sexeKey === "M" ? "bg-blue-50 border-blue-100"  : "bg-rose-50 border-rose-100"
   const iconBg   = sexeKey === "M" ? "bg-blue-100 text-blue-700"   : "bg-rose-100 text-rose-700"
@@ -528,9 +596,9 @@ function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarca
           <Users className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <h3 className="font-black text-lg">{sexeLabel} · {catDef.key}</h3>
+          <h3 className="font-black text-lg">{sexeLabel} · {catDef.key}{pistaLabel ? ` · ${pistaLabel}` : ""}</h3>
           <p className="text-xs text-muted-foreground">
-            {cobertes}/{slotsIndividuals.length} proves cobertes · {atletsCat.length} atletes
+            {cobertes}/{slotsIndividualsAplicables.length} proves cobertes · {atletsCat.length} atletes
           </p>
         </div>
         <button
@@ -557,6 +625,8 @@ function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarca
               millorMarcaMap={millorMarcaMap}
               onCanvi={handleCanviProva}
               atletesOcupats={atletesOcupats}
+              noDisponible={noDisponibleSlot(slotDef)}
+              pistaKey={pistaKey}
             />
           ))}
         </div>
@@ -570,32 +640,53 @@ function BlocEquip({ catDef, sexeKey, sexeLabel, athletes, provesDB, millorMarca
         />
 
         {/* Relleus */}
-        {slotsRelleu.map(slotDef => (
-          <div key={slotDef.slot} className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-amber-500" />
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
-                {slotDef.label}
-                {provaDBPerSlot[slotDef.slot]
-                  ? ` · basat en ${provaDBPerSlot[slotDef.slot].nom}`
-                  : " · prova no trobada a BD"}
-              </p>
+        {slotsRelleu.map(slotDef => {
+          if (noDisponibleSlot(slotDef)) {
+            const altrePista = pistaKey === "coberta" ? "aire lliure" : "pista coberta"
+            return (
+              <div key={slotDef.slot} className="rounded-xl border border-dashed px-4 py-3 space-y-1 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex-1">
+                    {slotDef.label}
+                  </p>
+                  <span className="text-xs font-semibold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
+                    Només {altrePista}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Aquest relleu, per aquesta categoria, només es disputa a {altrePista}.
+                </p>
+              </div>
+            )
+          }
+          return (
+            <div key={slotDef.slot} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-500" />
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                  {slotDef.label}
+                  {provaDBPerSlot[slotDef.slot]
+                    ? ` · basat en ${provaDBPerSlot[slotDef.slot].nom}`
+                    : " · prova no trobada a BD"}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {Array.from({ length: slotDef.numAtletes }, (_, i) => (
+                  <ReleuRow
+                    key={i}
+                    posicio={i + 1}
+                    atletaId={releus[slotDef.slot]?.[i] ?? null}
+                    athletes={atletsCat}
+                    provaDB={provaDBPerSlot[slotDef.slot]}
+                    millorMarcaMap={millorMarcaMap}
+                    onCanvi={(index, id) => handleCanviReleu(slotDef.slot, index, id)}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="space-y-1.5">
-              {Array.from({ length: slotDef.numAtletes }, (_, i) => (
-                <ReleuRow
-                  key={i}
-                  posicio={i + 1}
-                  atletaId={releus[slotDef.slot]?.[i] ?? null}
-                  athletes={atletsCat}
-                  provaDB={provaDBPerSlot[slotDef.slot]}
-                  millorMarcaMap={millorMarcaMap}
-                  onCanvi={(index, id) => handleCanviReleu(slotDef.slot, index, id)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
+          )
+        })}
 
         {atletesOcupats.size > 0 && (
           <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
@@ -623,6 +714,9 @@ export default function EquipOptimSection() {
   const [athletes, setAthletes]             = useState([])
   const [provesDB, setProvesDB]             = useState([])
   const [millorMarcaMap, setMillorMarcaMap] = useState({})
+  const [millorMarcaMapCoberta, setMillorMarcaMapCoberta]       = useState({})
+  const [millorMarcaMapAireLliure, setMillorMarcaMapAireLliure] = useState({})
+  const [pistaActiva, setPistaActiva]       = useState("coberta") // "coberta" | "aire_lliure" — només per categories amb distincioPista
   const [loading, setLoading]               = useState(true)
   const [saving, setSaving]                 = useState(false)
   const [saved, setSaved]                   = useState(false)
@@ -649,10 +743,11 @@ export default function EquipOptimSection() {
     setLoading(true)
     setSaved(false)
 
-    const [athletesSnap, provesSnap, marquesSnap, equipSnap] = await Promise.all([
+    const [athletesSnap, provesSnap, marquesSnap, eventsSnap, equipSnap] = await Promise.all([
       getDocs(collection(db, "athletes")),
       getDocs(collection(db, "proves")),
       getDocs(collection(db, "marques")),
+      getDocs(collection(db, "events")),
       getDoc(doc(db, "equip_optim", "actual")),
     ])
 
@@ -662,21 +757,32 @@ export default function EquipOptimSection() {
 
     const provesData = provesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    const marcaMap = {}
-    marquesSnap.docs.forEach(d => {
-      const m = d.data()
-      const key = `${m.atletaId}_${m.provaId}`
-      const prova = provesData.find(p => p.id === m.provaId)
-      if (!prova) return
-      const valor = parseMarca(m.marca)
-      if (valor == null) return
-      if (!marcaMap[key] || esMillor(valor, marcaMap[key].valor, prova.tipus))
-        marcaMap[key] = { valor, marca: m.marca }
-    })
+    // eventId → tipusPista ("coberta" | "aire_lliure"), per poder separar
+    // les millors marques de Sub-12/Sub-14 segons on es van fer.
+    const eventsTipusPista = {}
+    eventsSnap.docs.forEach(d => { eventsTipusPista[d.id] = d.data().tipusPista })
+
+    const construeixMarcaMap = (filtrePista) => {
+      const map = {}
+      marquesSnap.docs.forEach(d => {
+        const m = d.data()
+        if (filtrePista && eventsTipusPista[m.eventId] !== filtrePista) return
+        const key = `${m.atletaId}_${m.provaId}`
+        const prova = provesData.find(p => p.id === m.provaId)
+        if (!prova) return
+        const valor = parseMarca(m.marca)
+        if (valor == null) return
+        if (!map[key] || esMillor(valor, map[key].valor, prova.tipus))
+          map[key] = { valor, marca: m.marca }
+      })
+      return map
+    }
 
     setAthletes(atletesData)
     setProvesDB(provesData)
-    setMillorMarcaMap(marcaMap)
+    setMillorMarcaMap(construeixMarcaMap(null))
+    setMillorMarcaMapCoberta(construeixMarcaMap("coberta"))
+    setMillorMarcaMapAireLliure(construeixMarcaMap("aire_lliure"))
 
     if (equipSnap.exists()) {
       const d = equipSnap.data().guardatEl?.toDate?.()
@@ -695,7 +801,7 @@ export default function EquipOptimSection() {
       await setDoc(doc(db, "equip_optim", "actual"), {
         ...equipData,
         guardatEl: new Date(),
-      })
+      }, { merge: true })
       setSaved(true)
       setSavedAt(new Date())
       setTimeout(() => setSaved(false), 3000)
@@ -790,13 +896,37 @@ export default function EquipOptimSection() {
       ) : (
         <div className="flex items-center gap-2">
           <span className={`rounded-full border px-3 py-1 text-sm font-bold ${
-            tabActiu === "Sub-10"
-              ? "bg-amber-100 text-amber-700 border-amber-200"
-              : "bg-emerald-100 text-emerald-700 border-emerald-200"
+            COLOR_CAT[tabActiu] ?? "bg-slate-100 text-slate-600 border-slate-200"
           }`}>
             {tabActiu}
           </span>
           <span className="text-sm text-muted-foreground">— Vista de la teva categoria</span>
+        </div>
+      )}
+
+      {/* ── SELECTOR DE PISTA (només categories amb distinció coberta/aire lliure) ── */}
+      {catActiu?.distincioPista && (
+        <div className="flex gap-1 rounded-xl bg-muted p-1 w-fit">
+          <button
+            onClick={() => setPistaActiva("coberta")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-all ${
+              pistaActiva === "coberta"
+                ? "bg-background shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Coberta
+          </button>
+          <button
+            onClick={() => setPistaActiva("aire_lliure")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-all ${
+              pistaActiva === "aire_lliure"
+                ? "bg-background shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Aire lliure
+          </button>
         </div>
       )}
 
@@ -820,18 +950,30 @@ export default function EquipOptimSection() {
           {[
             { sexeKey: "M", sexeLabel: "♂ Nois" },
             { sexeKey: "F", sexeLabel: "♀ Noies" },
-          ].map(({ sexeKey, sexeLabel }) => (
-            <BlocEquip
-              key={`${catActiu.key}_${sexeKey}`}
-              catDef={catActiu}
-              sexeKey={sexeKey}
-              sexeLabel={sexeLabel}
-              athletes={filtraCat(athletes, "categoria")}
-              provesDB={provesDB}
-              millorMarcaMap={millorMarcaMap}
-              onEquipChange={handleEquipChange}
-            />
-          ))}
+          ].map(({ sexeKey, sexeLabel }) => {
+            const pistaSufix = catActiu.distincioPista ? `_${pistaActiva}` : ""
+            const pistaLabel = catActiu.distincioPista
+              ? (pistaActiva === "coberta" ? "Coberta" : "Aire lliure")
+              : null
+            const mapaActiu = catActiu.distincioPista
+              ? (pistaActiva === "coberta" ? millorMarcaMapCoberta : millorMarcaMapAireLliure)
+              : millorMarcaMap
+            return (
+              <BlocEquip
+                key={`${catActiu.key}_${sexeKey}${pistaSufix}`}
+                catDef={catActiu}
+                sexeKey={sexeKey}
+                sexeLabel={sexeLabel}
+                athletes={filtraCat(athletes, "categoria")}
+                provesDB={provesDB}
+                millorMarcaMap={mapaActiu}
+                pistaSufix={pistaSufix}
+                pistaLabel={pistaLabel}
+                pistaKey={catActiu.distincioPista ? pistaActiva : null}
+                onEquipChange={handleEquipChange}
+              />
+            )
+          })}
         </div>
       )}
     </div>
