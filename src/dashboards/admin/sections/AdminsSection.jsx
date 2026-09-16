@@ -11,6 +11,7 @@ import { httpsCallable } from "firebase/functions"
 import { sendPasswordResetEmail } from "firebase/auth"
 import { db, functions, auth } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { alertDialog, confirmDialog } from "@/components/GlobalDialog"
 
 import {
   Table,
@@ -84,7 +85,7 @@ export default function AdminsSection() {
 
   const save = async () => {
     if (!form.email || !form.password) {
-      alert("Email i contrasenya obligatoris")
+      await alertDialog("Email i contrasenya obligatoris")
       return
     }
     setGuardant(true)
@@ -110,7 +111,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error creant usuari: " + err.message)
+      await alertDialog("Error creant usuari: " + err.message)
     } finally {
       setGuardant(false)
     }
@@ -150,7 +151,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error guardant: " + err.message)
+      await alertDialog("Error guardant: " + err.message)
     } finally {
       setGuardant(false)
     }
@@ -167,7 +168,8 @@ export default function AdminsSection() {
   // ── Eliminar (Auth + Firestore, via Cloud Function) ─────────────────
   const remove = async (admin) => {
     if (!potEliminar(admin)) return
-    if (!confirm(`Eliminar ${admin.email}? Es tancarà del tot l'accés a l'app.`)) return
+    const ok = await confirmDialog(`Eliminar ${admin.email}? Es tancarà del tot l'accés a l'app.`, { danger: true })
+    if (!ok) return
     setBusyUid(admin.id)
     try {
       const fn = httpsCallable(functions, "deleteAdminUser")
@@ -175,7 +177,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error eliminant: " + err.message)
+      await alertDialog("Error eliminant: " + err.message)
     } finally {
       setBusyUid(null)
     }
@@ -189,10 +191,10 @@ export default function AdminsSection() {
     setBusyUid(admin.id)
     try {
       await sendPasswordResetEmail(auth, admin.email)
-      alert(`Correu de restabliment enviat a ${admin.email}`)
+      await alertDialog(`Correu de restabliment enviat a ${admin.email}`)
     } catch (err) {
       console.error(err)
-      alert("Error enviant el correu: " + err.message)
+      await alertDialog("Error enviant el correu: " + err.message)
     } finally {
       setBusyUid(null)
     }
@@ -203,7 +205,8 @@ export default function AdminsSection() {
     const missatge = admin.disabled
       ? `Reactivar l'accés de ${admin.email}?`
       : `Desactivar l'accés de ${admin.email}? No podrà iniciar sessió.`
-    if (!confirm(missatge)) return
+    const ok = await confirmDialog(missatge, { danger: !admin.disabled })
+    if (!ok) return
     setBusyUid(admin.id)
     try {
       const fn = httpsCallable(functions, "setUserDisabled")
@@ -211,7 +214,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error: " + err.message)
+      await alertDialog("Error: " + err.message)
     } finally {
       setBusyUid(null)
     }
@@ -232,7 +235,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error canviant l'email: " + err.message)
+      await alertDialog("Error canviant l'email: " + err.message)
     } finally {
       setBusyUid(null)
     }
@@ -244,7 +247,8 @@ export default function AdminsSection() {
     const missatge = nou
       ? `Convertir ${admin.email} en developer?`
       : `Treure el rol de developer a ${admin.email}?`
-    if (!confirm(missatge)) return
+    const ok = await confirmDialog(missatge)
+    if (!ok) return
     setBusyUid(admin.id)
     try {
       const fn = httpsCallable(functions, "setDeveloperStatus")
@@ -252,14 +256,15 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error: " + err.message)
+      await alertDialog("Error: " + err.message)
     } finally {
       setBusyUid(null)
     }
   }
 
   const ferMeDeveloper = async () => {
-    if (!confirm("Vols convertir-te en developer? Només funciona si encara no hi ha cap developer configurat.")) return
+    const ok = await confirmDialog("Vols convertir-te en developer? Només funciona si encara no hi ha cap developer configurat.")
+    if (!ok) return
     setBusyUid(uidActual)
     try {
       const fn = httpsCallable(functions, "setDeveloperStatus")
@@ -267,7 +272,7 @@ export default function AdminsSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error: " + err.message)
+      await alertDialog("Error: " + err.message)
     } finally {
       setBusyUid(null)
     }

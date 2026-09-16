@@ -9,6 +9,7 @@ import {
   orderBy,
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
+import { agruparProvesPerTipus, ordenarTipus } from "@/lib/proves"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,9 @@ import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -115,8 +118,21 @@ export default function ResultatsSection({ athleteId }) {
     load()
   }, [athleteId])
 
-  const provesUniques = useMemo(() => [...new Set(rows.map(r => r.prova))], [rows])
-  const tipusUnics = useMemo(() => [...new Set(rows.map(r => r.tipus))], [rows])
+  // Proves i tipus úniques que surten als filtres, agrupades per disciplina
+  // (velocitat, fons, salts, llançaments...) en comptes de l'ordre arbitrari
+  // amb què arriben les marques.
+  const provesUniques = useMemo(() => {
+    const vistes = new Set()
+    const llista = []
+    rows.forEach(r => {
+      if (r.prova && !vistes.has(r.prova)) {
+        vistes.add(r.prova)
+        llista.push({ nom: r.prova, tipus: r.tipus })
+      }
+    })
+    return agruparProvesPerTipus(llista)
+  }, [rows])
+  const tipusUnics = useMemo(() => ordenarTipus([...new Set(rows.map(r => r.tipus))]), [rows])
 
   const filteredRows = useMemo(() => {
     return rows.filter(r => {
@@ -200,8 +216,13 @@ export default function ResultatsSection({ athleteId }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="totes">Totes les proves</SelectItem>
-              {provesUniques.map(p => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
+              {provesUniques.map(grup => (
+                <SelectGroup key={grup.tipus}>
+                  <SelectLabel>{grup.etiqueta}</SelectLabel>
+                  {grup.proves.map(p => (
+                    <SelectItem key={p.nom} value={p.nom}>{p.nom}</SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>

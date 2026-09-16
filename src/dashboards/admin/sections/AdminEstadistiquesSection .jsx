@@ -8,6 +8,7 @@ import {
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 import { categoriaPerAny } from "@/lib/categoria"
+import { agruparProvesPerTipus } from "@/lib/proves"
 
 import {
   LineChart,
@@ -34,7 +35,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -197,7 +200,7 @@ export default function AdminEstadistiquesSection() {
 
   const provesAmbDades = useMemo(() => {
     const ids = [...new Set(marquesAtleta.map(m => m.provaId))]
-    return ids.map(id => ({ id, ...provesMap[id] })).filter(p => p.nom)
+    return agruparProvesPerTipus(ids.map(id => ({ id, ...provesMap[id] })).filter(p => p.nom))
   }, [marquesAtleta, provesMap])
 
   const evolucioData = useMemo(() => {
@@ -362,10 +365,15 @@ export default function AdminEstadistiquesSection() {
                   <SelectValue placeholder="Selecciona prova" />
                 </SelectTrigger>
                 <SelectContent>
-                  {provesAmbDades.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {TIPUS_EMOJI[p.tipus] || "🏅"} {p.nom}
-                    </SelectItem>
+                  {provesAmbDades.map(grup => (
+                    <SelectGroup key={grup.tipus}>
+                      <SelectLabel>{grup.etiqueta}</SelectLabel>
+                      {grup.proves.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {TIPUS_EMOJI[p.tipus] || "🏅"} {p.nom}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>

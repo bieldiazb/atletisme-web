@@ -2,7 +2,8 @@ import {
   Calendar,
   TextAlignJustify,
   Users,
-  ChartArea
+  ChartArea,
+  Award,
 } from "lucide-react"
 
 export const paresMenu = [
@@ -13,6 +14,7 @@ export const paresMenu = [
       { key: "calendari", label: "Calendari", icon: Calendar },
       { key: "perfil", label: "Perfil nen/a", icon: Users },
       { key: "estadistiques", label: "Estadístiques", icon: ChartArea },
+      { key: "diploma", label: "Diploma", icon: Award },
     ],
   },
 ]

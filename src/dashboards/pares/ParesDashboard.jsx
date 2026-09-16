@@ -9,7 +9,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/ui/sidebar/AppSidebar"
+import { MobileBottomNav } from "@/components/ui/sidebar/MobileBottomNav"
 import { paresMenu } from "@/components/ui/sidebar/pares.menu"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -24,12 +27,14 @@ import CalendariSection     from "@/dashboards/pares/sections/CalendariSection"
 import ResultatsSection     from "@/dashboards/pares/sections/ResultatsSection"
 import PerfilSection        from "@/dashboards/pares/sections/PerfilSection"
 import EstadistiquesSection from "./sections/EstadistiquesSection"
+import DiplomaSection       from "./sections/DiplomaSection"
 
 const VIEW_META = {
   perfil:        { title: (nom) => `Perfil de ${nom}`,        subtitle: "Resum esportiu i evolució de l'atleta" },
   resultats:     { title: (nom) => `Resultats de ${nom}`,     subtitle: "Marques i competicions del teu fill/a" },
   estadistiques: { title: (nom) => `Estadístiques de ${nom}`, subtitle: "Evolució i millors marques" },
   calendari:     { title: ()    => "Calendari",               subtitle: "Properes competicions i esdeveniments" },
+  diploma:       { title: (nom) => `Diploma de ${nom}`,       subtitle: "Descarrega el seu diploma de la temporada" },
   categoria:     { title: (_, cat) => cat ?? "Categoria",     subtitle: "Tots els atletes de la mateixa categoria" },
 }
 
@@ -40,6 +45,7 @@ const TEMPORADES = Array.from({ length: 4 }, (_, i) => ANY_ACTUAL - i)
 
 export default function ParesDashboard() {
   const [view, setView]         = useState("perfil")
+  const isMobile = useIsMobile()
   // Tots els atletes que el codi introduït dona accés (normalment 1, més d'1 si hi ha germans)
   const [siblings, setSiblings] = useState([])
   const [athleteId, setAthleteId] = useState(null)
@@ -120,6 +126,22 @@ export default function ParesDashboard() {
   const atletaCategoria = selected?.categoria ?? null
   const whatsappCategoria = atletaCategoria ? whatsappLinks[atletaCategoria] : null
 
+  // Secció "Diploma": la controla l'admin/entrenador per atleta
+  // (athletes/{id}.mostrarDiploma, des de la secció Diplomes del panell
+  // d'admin). Per defecte (camp no fixat) es mostra.
+  const diplomaVisible = selected?.mostrarDiploma !== false
+  const menuFiltrat = paresMenu
+    .map((grup) => ({
+      ...grup,
+      items: grup.items.filter((item) => item.key !== "diploma" || diplomaVisible),
+    }))
+    .filter((grup) => grup.items.length > 0)
+
+  // Barra de navegació inferior mòbil: aquí no cal "Més" (secció "Diploma"),
+  // ja hi caben totes les 4-5 seccions directament — el mateix menuFiltrat
+  // (respecta el toggle de visibilitat del diploma) aplanat.
+  const bottomNavItems = menuFiltrat.flatMap((grup) => grup.items)
+
   // Categories de tots els germans (per mostrar-los junts al calendari combinat).
   const categoriesGermans = [...new Set(siblings.map((a) => a.categoria).filter(Boolean))]
 
@@ -127,6 +149,12 @@ export default function ParesDashboard() {
     setAthleteId(id)
     localStorage.setItem("athleteSelectedId", id)
   }
+
+  // Si es canvia a un germà (o l'admin desactiva el diploma) i la vista
+  // activa era "Diploma" però ja no hi ha accés, es torna a una vista segura.
+  useEffect(() => {
+    if (view === "diploma" && !diplomaVisible) setView("perfil")
+  }, [view, diplomaVisible])
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center">
@@ -158,7 +186,7 @@ export default function ParesDashboard() {
       <AppSidebar
         currentView={view}
         setView={setView}
-        menu={paresMenu}
+        menu={menuFiltrat}
         title="Àrea Pares"
         subtitle={athleteName}
       />
@@ -170,7 +198,7 @@ export default function ParesDashboard() {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <div className="p-6 space-y-6">
+          <div className={cn("p-6 space-y-6", isMobile && "pb-24")}>
 
             <div className="border-b pb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -191,8 +219,8 @@ export default function ParesDashboard() {
                   </Button>
                 )}
 
-                {/* Selector de temporada — només té efecte a Perfil i Estadístiques */}
-                {(view === "perfil" || view === "estadistiques") && (
+                {/* Selector de temporada — Perfil, Estadístiques i Diploma */}
+                {(view === "perfil" || view === "estadistiques" || view === "diploma") && (
                   <div className="flex items-center gap-2">
                     <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
                     <Select value={String(temporada)} onValueChange={canviarTemporada}>
@@ -233,9 +261,14 @@ export default function ParesDashboard() {
             {view === "resultats"     && <ResultatsSection athleteId={athleteId} />}
             {view === "estadistiques" && <EstadistiquesSection athleteId={athleteId} temporada={temporada} />}
             {view === "calendari"     && <CalendariSection categories={categoriesGermans} siblings={siblings} />}
+            {view === "diploma" && diplomaVisible && <DiplomaSection athleteId={athleteId} temporada={temporada} />}
 
           </div>
         </div>
+
+        {isMobile && (
+          <MobileBottomNav items={bottomNavItems} currentView={view} setView={setView} />
+        )}
       </SidebarInset>
     </SidebarProvider>
   )

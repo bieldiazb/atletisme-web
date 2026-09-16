@@ -4,11 +4,14 @@ import {
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
+import { agruparProvesPerTipus } from "@/lib/proves"
 import { Upload, FileText, CheckCircle2, AlertCircle, X, Save, ChevronDown, ChevronUp, CalendarDays, MapPin } from "lucide-react"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -824,17 +827,20 @@ export default function ImportarResultatsPDF({ eventId }) {
                           <SelectValue placeholder="Assignar prova…" />
                         </SelectTrigger>
                         <SelectContent>
-                          {provesDB
-                            .filter(p => {
+                          {agruparProvesPerTipus(
+                            provesDB.filter(p => {
                               if (esAdmin) return true
                               const cats = p.categories ?? []
                               return cats.length === 0 || cats.some(c => catUsuari.includes(c))
                             })
-                            .slice().sort((a, b) => a.nom.localeCompare(b.nom, "ca"))
-                            .map(p => (
-                              <SelectItem key={p.id} value={p.id} className="text-xs">{p.nom}</SelectItem>
-                            ))
-                          }
+                          ).map(grup => (
+                            <SelectGroup key={grup.tipus}>
+                              <SelectLabel>{grup.etiqueta}</SelectLabel>
+                              {grup.proves.map(p => (
+                                <SelectItem key={p.id} value={p.id} className="text-xs">{p.nom}</SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
                         </SelectContent>
                       </Select>
                   </div>

@@ -14,6 +14,7 @@ import {
   Settings,
   UploadCloud,
   Eye,
+  Award,
 } from "lucide-react"
 
 // Menú agrupat per blocs temàtics (no un sol calaix "Gestió") perquè d'un
@@ -48,6 +49,7 @@ export const adminMenu = [
       { key: "marques", label: "Marques", icon: Timer },
       { key: "marques-relleu", label: "Marques Relleus", icon: UsersRound },
       { key: "import-results", label: "Importar Resultats", icon: TextAlignJustify },
+      { key: "diplomes", label: "Diplomes", icon: Award },
     ],
   },
   {
@@ -71,3 +73,16 @@ export const adminMenu = [
     ],
   },
 ]
+
+// Barra de navegació inferior (només mòbil): els 4 accessos que fa servir
+// més sovint cada rol en el dia a dia — un entrenador porta l'entrenament
+// (passar llista, marques), la coordinadora porta el club (usuaris,
+// diplomes). Atletes i Calendari són comuns als dos. La resta de seccions
+// sempre són a un toc de "Més" (el menú complet de sempre).
+//
+// Només claus: l'icona i l'etiqueta es resolen contra `adminMenu` filtrat
+// per potVeureItem (a AdminDashboard.jsx), així mai es desincronitzen ni
+// salten els permisos personalitzats de cada usuari. Per canviar quins
+// accessos surten aquí, només cal editar aquestes dues llistes.
+export const BOTTOM_NAV_ENTRENADOR_KEYS = ["athletes", "assistencia", "marques", "calendar"]
+export const BOTTOM_NAV_ADMIN_KEYS = ["athletes", "calendar", "diplomes", "create-admin"]

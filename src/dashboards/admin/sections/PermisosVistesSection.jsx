@@ -13,6 +13,7 @@ import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 import { adminMenu } from "@/components/ui/sidebar/admin.menu"
 import { logAudit } from "@/lib/auditLog"
+import { alertDialog, confirmDialog } from "@/components/GlobalDialog"
 
 import {
   Table,
@@ -176,7 +177,7 @@ export default function PermisosVistesSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error guardant els permisos: " + err.message)
+      await alertDialog("Error guardant els permisos: " + err.message)
     } finally {
       setGuardantPermisos(false)
     }
@@ -192,7 +193,7 @@ export default function PermisosVistesSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error restablint els permisos: " + err.message)
+      await alertDialog("Error restablint els permisos: " + err.message)
     } finally {
       setGuardantPermisos(false)
     }
@@ -212,7 +213,7 @@ export default function PermisosVistesSection() {
       await logAudit(userData, "permisos.setDefecte", { extra: { rol: rolObjectiu, permisosVistes: plantilla } })
     } catch (err) {
       console.error(err)
-      alert("Error desant els valors per defecte: " + err.message)
+      await alertDialog("Error desant els valors per defecte: " + err.message)
     } finally {
       setGuardantDefecte(null)
     }
@@ -225,17 +226,16 @@ export default function PermisosVistesSection() {
     const plantilla = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
     const objectius = usuaris.filter((u) => u.rol === rolObjectiu)
     if (objectius.length === 0) {
-      alert(`No hi ha cap usuari amb rol "${rolObjectiu === "admin" ? "admin" : "entrenador"}".`)
+      await alertDialog(`No hi ha cap usuari amb rol "${rolObjectiu === "admin" ? "admin" : "entrenador"}".`)
       return
     }
-    if (
-      !confirm(
-        `Desar aquests valors per defecte i aplicar-los als ${objectius.length} usuari(s) amb rol "${
-          rolObjectiu === "admin" ? "admin" : "entrenador"
-        }"? Se'ls sobreescriurà qualsevol personalització que tinguessin.`
-      )
+    const ok = await confirmDialog(
+      `Desar aquests valors per defecte i aplicar-los als ${objectius.length} usuari(s) amb rol "${
+        rolObjectiu === "admin" ? "admin" : "entrenador"
+      }"? Se'ls sobreescriurà qualsevol personalització que tinguessin.`,
+      { danger: true }
     )
-      return
+    if (!ok) return
     setAplicant(rolObjectiu)
     try {
       await setDoc(doc(db, "config", "permisosDefault"), { [rolObjectiu]: plantilla }, { merge: true })
@@ -250,7 +250,7 @@ export default function PermisosVistesSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error aplicant els valors per defecte: " + err.message)
+      await alertDialog("Error aplicant els valors per defecte: " + err.message)
     } finally {
       setAplicant(null)
     }
@@ -280,7 +280,7 @@ export default function PermisosVistesSection() {
       load()
     } catch (err) {
       console.error(err)
-      alert("Error guardant la gestió delegada: " + err.message)
+      await alertDialog("Error guardant la gestió delegada: " + err.message)
     } finally {
       setGuardantGestio(false)
     }

@@ -8,6 +8,7 @@ import {
   getDoc,
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
+import { agruparProvesPerTipus } from "@/lib/proves"
 
 import {
   LineChart,
@@ -38,7 +39,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -189,9 +192,9 @@ export default function EstadistiquesSection({ athleteId, temporada }) {
   // Llista de proves úniques amb registres
   const provesAmbDades = useMemo(() => {
     const ids = [...new Set(marquesFiltrades.map(m => m.provaId))]
-    return ids
-      .map(id => ({ id, ...proves[id] }))
-      .filter(p => p.nom)
+    return agruparProvesPerTipus(
+      ids.map(id => ({ id, ...proves[id] })).filter(p => p.nom)
+    )
   }, [marquesFiltrades, proves])
 
   // Evolució temporal de la prova seleccionada
@@ -330,10 +333,15 @@ export default function EstadistiquesSection({ athleteId, temporada }) {
               <SelectValue placeholder="Selecciona prova" />
             </SelectTrigger>
             <SelectContent>
-              {provesAmbDades.map(p => (
-                <SelectItem key={p.id} value={p.id}>
-                  {TIPUS_EMOJI[p.tipus] || "🏅"} {p.nom}
-                </SelectItem>
+              {provesAmbDades.map(grup => (
+                <SelectGroup key={grup.tipus}>
+                  <SelectLabel>{grup.etiqueta}</SelectLabel>
+                  {grup.proves.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {TIPUS_EMOJI[p.tipus] || "🏅"} {p.nom}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>

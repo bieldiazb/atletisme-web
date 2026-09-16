@@ -16,6 +16,8 @@ import {
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 import { logAudit } from "@/lib/auditLog"
+import { agruparProvesPerTipus } from "@/lib/proves"
+import { AtletaCombobox } from "@/components/AtletaCombobox"
 
 import { Input } from "@/components/ui/input"
 import { DataTable } from "@/components/ui/data-table"
@@ -43,7 +45,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -498,8 +502,13 @@ export default function MarquesSection() {
             <SelectTrigger><SelectValue placeholder="Prova" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="tots">Totes les proves</SelectItem>
-              {proves.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+              {agruparProvesPerTipus(proves).map(grup => (
+                <SelectGroup key={grup.tipus}>
+                  <SelectLabel>{grup.etiqueta}</SelectLabel>
+                  {grup.proves.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>
@@ -613,34 +622,24 @@ export default function MarquesSection() {
           </SheetHeader>
 
           <div className="space-y-4 py-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full justify-between">
-                  {form.atletaId ? sortedAthletes.find(a => a.id === form.atletaId)?.nom : "Selecciona atleta"}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-full p-0">
-                <Command>
-                  <CommandInput placeholder="Buscar atleta..." />
-                  <CommandEmpty>No s'ha trobat cap atleta</CommandEmpty>
-                  <CommandGroup>
-                    {sortedAthletes.map(a => (
-                      <CommandItem key={a.id} value={a.nom} onSelect={() => setForm({ ...form, atletaId: a.id })}>
-                        <Check className={cn("mr-2 h-4 w-4", form.atletaId === a.id ? "opacity-100" : "opacity-0")} />
-                        {a.nom}
-                        {a.categoria && <span className="ml-1 text-xs text-muted-foreground">· {a.categoria}</span>}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <AtletaCombobox
+              athletes={atletesDeRol}
+              value={form.atletaId}
+              onChange={(id) => setForm({ ...form, atletaId: id })}
+              categoriesOrdre={TOTES_CATEGORIES}
+            />
 
             <Select value={form.provaId} onValueChange={v => setForm({ ...form, provaId: v })}>
               <SelectTrigger><SelectValue placeholder="Selecciona prova" /></SelectTrigger>
               <SelectContent>
-                {proves.map(p => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}
+                {agruparProvesPerTipus(proves).map(grup => (
+                  <SelectGroup key={grup.tipus}>
+                    <SelectLabel>{grup.etiqueta}</SelectLabel>
+                    {grup.proves.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
               </SelectContent>
             </Select>
 

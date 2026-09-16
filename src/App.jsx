@@ -5,6 +5,7 @@ import Pares from "./pages/Pares"
 import AccesPerCodi from "./pages/AccesPerCodi"
 import AdminRoute from "./routes/AdminRoute"
 import { Toaster } from "@/components/ui/toaster"
+import { GlobalDialog } from "@/components/GlobalDialog"
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
 
       {/* 🔥 SEMPRE FORA DE <Routes> */}
       <Toaster />
+      <GlobalDialog />
     </>
   )
 }

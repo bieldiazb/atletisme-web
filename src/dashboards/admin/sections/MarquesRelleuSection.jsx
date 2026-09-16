@@ -16,6 +16,7 @@ import {
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 import { logAudit } from "@/lib/auditLog"
+import { ordenarProves, agruparProvesPerTipus } from "@/lib/proves"
 
 import { Input } from "@/components/ui/input"
 import { DataTable } from "@/components/ui/data-table"
@@ -43,7 +44,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -149,14 +152,16 @@ export default function MarquesRelleuSection() {
     getCognom(a.nom).localeCompare(getCognom(b.nom), "ca")
   )
 
-  // Només proves marcades com a relleu
-  const provesRelleu = esAdmin
-    ? proves.filter(p => p.esRelleu)
-    : proves.filter(p => {
-        if (!p.esRelleu) return false
-        const cats = p.categories ?? []
-        return cats.length === 0 || cats.some(c => catUsuari.includes(c))
-      })
+  // Només proves marcades com a relleu, agrupades per disciplina
+  const provesRelleu = ordenarProves(
+    esAdmin
+      ? proves.filter(p => p.esRelleu)
+      : proves.filter(p => {
+          if (!p.esRelleu) return false
+          const cats = p.categories ?? []
+          return cats.length === 0 || cats.some(c => catUsuari.includes(c))
+        })
+  )
 
   const marquesDeRol = esAdmin
     ? marques
@@ -427,7 +432,14 @@ export default function MarquesRelleuSection() {
             <Select value={form.provaId} onValueChange={v => setForm({ ...form, provaId: v })}>
               <SelectTrigger><SelectValue placeholder="Selecciona prova de relleu" /></SelectTrigger>
               <SelectContent>
-                {provesRelleu.map(p => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}
+                {agruparProvesPerTipus(provesRelleu).map(grup => (
+                  <SelectGroup key={grup.tipus}>
+                    <SelectLabel>{grup.etiqueta}</SelectLabel>
+                    {grup.proves.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
               </SelectContent>
             </Select>
 
