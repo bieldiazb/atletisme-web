@@ -78,6 +78,7 @@ import {
   QrCode,
   Copy,
   Download,
+  KeyRound,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ca } from "date-fns/locale"
@@ -133,7 +134,7 @@ function SortButton({ label, field, sort, onToggle }) {
 export default function AthletesSection() {
   const { toast } = useToast()
   const isMobile = useIsMobile()
-  const { esAdmin, filtraCat, categories: catUsuari, userData } = useUser()
+  const { esAdmin, esDeveloper, filtraCat, categories: catUsuari, userData } = useUser()
 
   const [athletes, setAthletes] = useState([])
   const [open, setOpen] = useState(false)
@@ -200,6 +201,12 @@ export default function AthletesSection() {
   const [generantCodis, setGenerantCodis] = useState(false)
   const totsElsCodis = useMemo(() => new Set(athletes.flatMap(codisDe)), [athletes])
   const atletesSenseCodi = useMemo(() => athletes.filter((a) => codisDe(a).length === 0), [athletes])
+
+  // --- Canvi de codis en massa (només developer) — amb previsualització i
+  // possibilitat d'editar/regenerar cada fila abans de confirmar res, igual
+  // que la importació CSV: mai s'escriu res a Firestore sense revisar-ho.
+  const [canviCodisAtletes, setCanviCodisAtletes] = useState(null) // array de files mentre el diàleg és obert, o null
+  const [canviCodisLoading, setCanviCodisLoading] = useState(false)
 
   const [filters, setFilters] = useState({
     nom: "",
@@ -456,6 +463,86 @@ export default function AthletesSection() {
     }
   }
 
+  // Obre la previsualització amb un codi nou proposat (a l'atzar) per a cada
+  // atleta seleccionat. No escriu res encara — només omple l'estat del diàleg.
+  const obrirCanviCodis = () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const usats = new Set(totsElsCodis)
+    const files = ids.map((id) => {
+      const atleta = athletes.find((a) => a.id === id)
+      const codiNou = generarCodi(usats)
+      usats.add(codiNou)
+      return {
+        id,
+        nom: atleta?.nom ?? "—",
+        codiActual: atleta ? (codisDe(atleta).join(", ") || "—") : "—",
+        codiNou,
+      }
+    })
+    setCanviCodisAtletes(files)
+  }
+
+  const regenerarCodiFila = (id) => {
+    setCanviCodisAtletes((prev) => {
+      if (!prev) return prev
+      const usats = new Set([...totsElsCodis, ...prev.filter((f) => f.id !== id).map((f) => f.codiNou)])
+      return prev.map((f) => (f.id === id ? { ...f, codiNou: generarCodi(usats) } : f))
+    })
+  }
+
+  const editarCodiFila = (id, valor) => {
+    setCanviCodisAtletes((prev) => prev?.map((f) => (f.id === id ? { ...f, codiNou: valor } : f)) ?? prev)
+  }
+
+  // Validació en viu de la previsualització: codi buit, repetit dins la
+  // mateixa tanda, o ja usat per un atleta que NO forma part d'aquesta tanda.
+  const codisSeleccioValidats = useMemo(() => {
+    if (!canviCodisAtletes) return []
+    const idsSeleccionats = new Set(canviCodisAtletes.map((f) => f.id))
+    const codisAltres = new Set(athletes.filter((a) => !idsSeleccionats.has(a.id)).flatMap(codisDe))
+    const vistos = new Set()
+    return canviCodisAtletes.map((f) => {
+      const codi = f.codiNou.trim().toUpperCase()
+      let error = null
+      if (!codi) error = "codi buit"
+      else if (codisAltres.has(codi)) error = "ja el fa servir un altre atleta"
+      else if (vistos.has(codi)) error = "repetit en aquesta llista"
+      vistos.add(codi)
+      return { ...f, codi, error }
+    })
+  }, [canviCodisAtletes, athletes])
+
+  const tancarCanviCodis = () => { if (!canviCodisLoading) setCanviCodisAtletes(null) }
+
+  const confirmarCanviCodis = async () => {
+    if (codisSeleccioValidats.length === 0 || codisSeleccioValidats.some((f) => f.error)) return
+    setCanviCodisLoading(true)
+    try {
+      for (const group of chunk(codisSeleccioValidats, BATCH_SIZE)) {
+        const batch = writeBatch(db)
+        group.forEach(({ id, codi }) =>
+          batch.update(doc(db, "athletes", id), { codisAcces: [codi], codiPublic: codi })
+        )
+        await batch.commit()
+      }
+      toast({
+        title: "Codis actualitzats",
+        description: `${codisSeleccioValidats.length} atleta${codisSeleccioValidats.length > 1 ? "s" : ""} amb codi nou`,
+      })
+      logAudit(userData, "athletes.bulkUpdate", {
+        extra: { accio: "canviarCodis", quantitat: codisSeleccioValidats.length },
+      })
+      setCanviCodisAtletes(null)
+      clearSelection()
+      load()
+    } catch {
+      toast({ variant: "destructive", title: "Error canviant els codis", description: "Torna-ho a provar" })
+    } finally {
+      setCanviCodisLoading(false)
+    }
+  }
+
   const openCreate = () => {
     setEditing(null)
     setForm({
@@ -699,6 +786,12 @@ export default function AthletesSection() {
             <Button size="sm" variant="outline" disabled={bulkLoading} onClick={() => bulkSetActiu(false)}>
               Marcar inactius
             </Button>
+            {esDeveloper && (
+              <Button size="sm" variant="outline" disabled={bulkLoading} onClick={obrirCanviCodis}>
+                <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                Canviar codis
+              </Button>
+            )}
             <Button size="sm" variant="destructive" disabled={bulkLoading} onClick={() => setBulkDeleteConfirm(true)}>
               Eliminar seleccionats
             </Button>
@@ -907,6 +1000,75 @@ export default function AthletesSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* CANVI DE CODIS EN MASSA (només developer) — previsualització editable abans de confirmar */}
+      <Dialog open={!!canviCodisAtletes} onOpenChange={(o) => { if (!o) tancarCanviCodis() }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Canviar codis d'accés</DialogTitle>
+          </DialogHeader>
+          {canviCodisAtletes && (
+            <div className="space-y-4 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Revisa els codis nous abans de confirmar: en desar, es reemplaça el codi d'accés actual de cada
+                atleta pel de la columna "Codi nou". Si un atleta comparteix codi amb un germà, actualitza'l
+                també a ell perquè continuïn entrant tots dos amb el mateix codi.
+              </p>
+
+              <div className="rounded-lg border overflow-x-auto max-h-[50vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-xs text-muted-foreground sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Atleta</th>
+                      <th className="px-3 py-2 text-left">Codi actual</th>
+                      <th className="px-3 py-2 text-left">Codi nou</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {codisSeleccioValidats.map((f) => (
+                      <tr key={f.id} className={f.error ? "bg-destructive/5" : ""}>
+                        <td className="px-3 py-2">{f.nom}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{f.codiActual}</td>
+                        <td className="px-3 py-2">
+                          <Input
+                            value={f.codiNou}
+                            onChange={(e) => editarCodiFila(f.id, e.target.value)}
+                            className="h-8 w-28 font-mono text-xs"
+                          />
+                          {f.error && <p className="text-[11px] text-destructive mt-1">{f.error}</p>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8"
+                            title="Generar un altre codi a l'atzar"
+                            onClick={() => regenerarCodiFila(f.id)}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <Button
+                className="w-full"
+                disabled={canviCodisLoading || codisSeleccioValidats.some((f) => f.error)}
+                onClick={confirmarCanviCodis}
+              >
+                {canviCodisLoading
+                  ? "Desant..."
+                  : `Confirmar canvi de codis (${codisSeleccioValidats.length})`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* FITXA DE L'ATLETA — dades + observacions (només visible aquí, al panell admin/entrenador) */}
       <Dialog open={!!viewingAthlete} onOpenChange={(o) => { if (!o) setViewingAthlete(null) }}>

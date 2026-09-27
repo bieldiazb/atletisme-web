@@ -16,18 +16,29 @@ import { auth, db } from "./firebaseClient"
  *     permisosVistes?: string[],  // keys del menú que aquest usuari en concret
  *                                 // pot veure — si no existeix, s'aplica el
  *                                 // comportament per defecte segons el rol
+ *     permisosEdicio?: string[],  // keys del menú on aquest usuari en concret
+ *                                 // pot editar (crear/modificar/eliminar), no
+ *                                 // només consultar — mateix conveni que
+ *                                 // permisosVistes (si no existeix, per
+ *                                 // defecte segons el rol). Un item només és
+ *                                 // realment editable si també és visible,
+ *                                 // vegeu potEditarItem.
  *     potGestionar?: string[],    // (només admins) uids d'entrenadors que
  *                                 // aquest admin pot gestionar (editar-los
- *                                 // permisosVistes) — assignat pel developer
+ *                                 // permisosVistes/permisosEdicio) — assignat
+ *                                 // pel developer
  *   }
  *
- * Valors per defecte per rol quan un usuari NO té permisosVistes propi:
- * config/permisosDefault = { entrenador: string[], admin: string[] },
- * editable pel developer des de "Permisos de visualització". Si no existeix
- * (o no té el rol en qüestió), es manté el comportament de tota la vida.
+ * Valors per defecte per rol quan un usuari NO té permisos propis:
+ * config/permisosDefault = {
+ *   entrenador: string[], admin: string[],             // visualització
+ *   entrenadorEdicio: string[], adminEdicio: string[],  // edició
+ * }, editable pel developer des de "Permisos de visualització i edició". Si
+ * no existeix (o no té el rol en qüestió), es manté el comportament de tota
+ * la vida (qui veu una secció, hi pot editar lliurement).
  *
  * Ús:
- *   const { rol, categories, esAdmin, esDeveloper, filtraCat, teAccesCat, potVeureItem } = useUser()
+ *   const { rol, categories, esAdmin, esDeveloper, filtraCat, teAccesCat, potVeureItem, potEditarItem } = useUser()
  */
 
 const UserContext = createContext(null)
@@ -89,6 +100,7 @@ export function UserProvider({ children }) {
   // undefined/null = encara no s'ha personalitzat res per aquest usuari
   // (comportament per defecte segons rol); array = llista exacta i explícita.
   const permisosVistes = Array.isArray(userData?.permisosVistes) ? userData.permisosVistes : null
+  const permisosEdicio = Array.isArray(userData?.permisosEdicio) ? userData.permisosEdicio : null
   const potGestionar   = userData?.potGestionar ?? []
 
   /**
@@ -131,10 +143,34 @@ export function UserProvider({ children }) {
     return grupEsAdminOnly ? esAdmin : true
   }
 
+  /**
+   * Decideix si l'usuari actual pot EDITAR (crear/modificar/eliminar, no
+   * només consultar) un item concret — mateix mecanisme que potVeureItem,
+   * amb config/permisosDefault.{rol}Edicio i admins/{uid}.permisosEdicio,
+   * però amb un requisit afegit: mai es pot editar el que no es pot veure.
+   * Si l'app encara no distingeix visualització d'edició dins d'una secció
+   * concreta (la majoria, de moment), aquesta funció ja queda preparada
+   * perquè cada secció l'usi quan calgui deshabilitar els seus propis
+   * botons de crear/editar/eliminar.
+   */
+  const potEditarItem = (item, grupEsAdminOnly) => {
+    if (!potVeureItem(item, grupEsAdminOnly)) return false
+    if (item.developerOnly) return esDeveloper
+    if (item.nomesGestors) return esDeveloper || (esAdmin && potGestionar.length > 0)
+    if (esDeveloper) return true
+    if (permisosEdicio) return permisosEdicio.includes(item.key)
+    const plantilla = permisosDefault?.[esAdmin ? "adminEdicio" : "entrenadorEdicio"]
+    if (Array.isArray(plantilla)) return plantilla.includes(item.key)
+    // Sense personalitzar ni plantilla d'edició pròpia: comportament de
+    // sempre, qui pot veure la secció hi pot editar lliurement.
+    return true
+  }
+
   return (
     <UserContext.Provider value={{
       userData, loading, rol, nom, categories, esAdmin, esDeveloper,
-      permisosVistes, potGestionar, permisosDefault, filtraCat, teAccesCat, potVeureItem,
+      permisosVistes, permisosEdicio, potGestionar, permisosDefault,
+      filtraCat, teAccesCat, potVeureItem, potEditarItem,
     }}>
       {children}
     </UserContext.Provider>

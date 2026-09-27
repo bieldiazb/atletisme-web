@@ -54,8 +54,12 @@ service cloud.firestore {
     //   permisosVistes: string[] — quins items del menú veu aquest usuari en
     //     concret; si no existeix, es manté el comportament per defecte
     //     segons el rol (vegeu UserContext.potVeureItem).
+    //   permisosEdicio: string[] — quins items pot EDITAR (no només veure)
+    //     aquest usuari en concret; mateix conveni i mateixa regla de
+    //     delegació que permisosVistes (vegeu UserContext.potEditarItem).
     //   potGestionar: string[] — (només admins) uids d'entrenadors que
-    //     aquest admin pot gestionar (és a dir, editar-los permisosVistes).
+    //     aquest admin pot gestionar (és a dir, editar-los permisosVistes i
+    //     permisosEdicio).
     // A baix es tracten a part perquè la gràcia de la delegació és que no
     // qualsevol admin els pugui tocar només per ser admin — si no, seria
     // maquillatge de la UI i cap restricció real.
@@ -78,17 +82,18 @@ service cloud.firestore {
 
       // Escriptura general (nom, rol, categories, email, disabled...): com
       // sempre, un admin complet pot editar qualsevol perfil i tothom pot
-      // editar el seu — sempre que la crida no toqui els dos camps de
-      // permisos, que tenen les seves pròpies regles just a sota.
+      // editar el seu — sempre que la crida no toqui els camps de permisos,
+      // que tenen les seves pròpies regles just a sota.
       allow update: if (isAdminRole() || request.auth.uid == uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["permisosVistes", "potGestionar"]);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["permisosVistes", "permisosEdicio", "potGestionar"]);
 
       // potGestionar: només developer el pot escriure.
       allow update: if isDeveloperRole() && afectaNomes(["potGestionar"]);
 
-      // permisosVistes: developer sempre, o un admin amb gestió delegada
-      // però només sobre un entrenador que tingui assignat.
-      allow update: if afectaNomes(["permisosVistes"])
+      // permisosVistes / permisosEdicio (soles o juntes, és com les desa
+      // PermisosVistesSection.jsx): developer sempre, o un admin amb gestió
+      // delegada però només sobre un entrenador que tingui assignat.
+      allow update: if afectaNomes(["permisosVistes", "permisosEdicio"])
         && (isDeveloperRole() || potGestionarEntrenador(uid));
 
       allow delete: if false; // sempre via deleteAdminUser (Cloud Function)

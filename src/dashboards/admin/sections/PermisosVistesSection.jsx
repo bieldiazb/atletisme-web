@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Eye, EyeOff, Users, ShieldCheck, SlidersHorizontal } from "lucide-react"
+import { Eye, EyeOff, Pencil, Users, ShieldCheck, SlidersHorizontal } from "lucide-react"
 
 // Items del menú que es poden personalitzar per usuari. Es treuen els
 // developerOnly (sostre dur, mai personalitzables) i l'item especial
@@ -58,6 +58,8 @@ function chunk(arr, size) {
 
 // El comportament "de tota la vida" quan no hi ha res configurat enlloc
 // (ni personalitzat de l'usuari, ni valors per defecte de config/permisosDefault).
+// Serveix tant per a visualització com per a edició: per defecte, qui veu
+// una secció hi pot editar lliurement.
 function defectePerRolBase(rolObjectiu) {
   const esAdminObjectiu = rolObjectiu === "admin"
   return ITEMS_PERSONALITZABLES.filter((item) => (item.grupAdminOnly ? esAdminObjectiu : true)).map(
@@ -66,14 +68,22 @@ function defectePerRolBase(rolObjectiu) {
 }
 
 // Reprodueix, per a un usuari QUALSEVOL (no el que ha iniciat sessió), el que
-// calcularia UserContext.potVeureItem si encara no té permisos personalitzats
-// — és el que es marca com a preseleccionat quan s'obre el diàleg d'edició
-// per primer cop. Té en compte els valors per defecte de config/permisosDefault
-// si ja n'hi ha (plantillesDefecte), i si no, cau al comportament de sempre.
+// calcularia UserContext.potVeureItem/potEditarItem si encara no té permisos
+// personalitzats — és el que es marca com a preseleccionat quan s'obre el
+// diàleg d'edició per primer cop. Té en compte els valors per defecte de
+// config/permisosDefault si ja n'hi ha (plantillesDefecte), i si no, cau al
+// comportament de sempre.
 function clausPerDefecte(usuari, plantillesDefecte) {
   if (usuari.isDeveloper === true) return ITEMS_PERSONALITZABLES.map((item) => item.key)
   const rolObjectiu = usuari.rol === "admin" ? "admin" : "entrenador"
   const plantilla = plantillesDefecte?.[rolObjectiu]
+  return Array.isArray(plantilla) ? plantilla : defectePerRolBase(rolObjectiu)
+}
+
+function clausEdicioPerDefecte(usuari, plantillesDefecte) {
+  if (usuari.isDeveloper === true) return ITEMS_PERSONALITZABLES.map((item) => item.key)
+  const rolObjectiu = usuari.rol === "admin" ? "admin" : "entrenador"
+  const plantilla = plantillesDefecte?.[`${rolObjectiu}Edicio`]
   return Array.isArray(plantilla) ? plantilla : defectePerRolBase(rolObjectiu)
 }
 
@@ -85,7 +95,8 @@ export default function PermisosVistesSection() {
   const [carregant, setCarregant] = useState(true)
 
   const [obertPermisos, setObertPermisos] = useState(null) // usuari
-  const [seleccioPermisos, setSeleccioPermisos] = useState([])
+  const [seleccioPermisos, setSeleccioPermisos] = useState([]) // veure
+  const [seleccioEdicio, setSeleccioEdicio] = useState([]) // editar
   const [guardantPermisos, setGuardantPermisos] = useState(false)
 
   const [obertGestio, setObertGestio] = useState(null) // admin
@@ -93,9 +104,12 @@ export default function PermisosVistesSection() {
   const [guardantGestio, setGuardantGestio] = useState(false)
 
   // Valors per defecte editables (config/permisosDefault) — només rellevants
-  // per al developer, que és qui els pot editar i aplicar.
+  // per al developer, que és qui els pot editar i aplicar. Veure i editar
+  // són plantilles independents per rol.
   const [plantillaEntrenador, setPlantillaEntrenador] = useState(() => defectePerRolBase("entrenador"))
   const [plantillaAdmin, setPlantillaAdmin] = useState(() => defectePerRolBase("admin"))
+  const [plantillaEntrenadorEdicio, setPlantillaEntrenadorEdicio] = useState(() => defectePerRolBase("entrenador"))
+  const [plantillaAdminEdicio, setPlantillaAdminEdicio] = useState(() => defectePerRolBase("admin"))
   const [carregantDefectes, setCarregantDefectes] = useState(true)
   const [guardantDefecte, setGuardantDefecte] = useState(null) // "entrenador" | "admin" | null
   const [aplicant, setAplicant] = useState(null) // "entrenador" | "admin" | null
@@ -118,6 +132,10 @@ export default function PermisosVistesSection() {
         const data = snap.exists() ? snap.data() : {}
         setPlantillaEntrenador(Array.isArray(data.entrenador) ? data.entrenador : defectePerRolBase("entrenador"))
         setPlantillaAdmin(Array.isArray(data.admin) ? data.admin : defectePerRolBase("admin"))
+        setPlantillaEntrenadorEdicio(
+          Array.isArray(data.entrenadorEdicio) ? data.entrenadorEdicio : defectePerRolBase("entrenador")
+        )
+        setPlantillaAdminEdicio(Array.isArray(data.adminEdicio) ? data.adminEdicio : defectePerRolBase("admin"))
       } catch (err) {
         console.error(err)
       } finally {
@@ -127,7 +145,12 @@ export default function PermisosVistesSection() {
     carregarDefectes()
   }, [esDeveloper])
 
-  const plantillesDefecte = { entrenador: plantillaEntrenador, admin: plantillaAdmin }
+  const plantillesDefecte = {
+    entrenador: plantillaEntrenador,
+    admin: plantillaAdmin,
+    entrenadorEdicio: plantillaEntrenadorEdicio,
+    adminEdicio: plantillaAdminEdicio,
+  }
 
   const potGestionarPermisos = esDeveloper || (esAdmin && potGestionar.length > 0)
 
@@ -149,29 +172,45 @@ export default function PermisosVistesSection() {
     [usuaris]
   )
 
-  // ── Diàleg de permisos de visualització ─────────────────────────────
+  // ── Diàleg de permisos (visualització + edició) ─────────────────────
   const obrirPermisos = (usuari) => {
     setObertPermisos(usuari)
     setSeleccioPermisos(
       Array.isArray(usuari.permisosVistes) ? usuari.permisosVistes : clausPerDefecte(usuari, plantillesDefecte)
     )
+    setSeleccioEdicio(
+      Array.isArray(usuari.permisosEdicio) ? usuari.permisosEdicio : clausEdicioPerDefecte(usuari, plantillesDefecte)
+    )
   }
 
-  const toggleItem = (key) =>
-    setSeleccioPermisos((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    )
+  // Si es treu la visualització d'un item, també se li treu l'edició — mai
+  // té sentit poder editar el que no es pot ni veure.
+  const toggleItem = (key) => {
+    setSeleccioPermisos((prev) => {
+      const ara = prev.includes(key)
+      if (ara) setSeleccioEdicio((prevE) => prevE.filter((k) => k !== key))
+      return ara ? prev.filter((k) => k !== key) : [...prev, key]
+    })
+  }
 
-  const esPersonalitzat = Array.isArray(obertPermisos?.permisosVistes)
+  const toggleEdicio = (key) => {
+    if (!seleccioPermisos.includes(key)) return // no editable si no és visible
+    setSeleccioEdicio((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+  }
+
+  const esPersonalitzat = Array.isArray(obertPermisos?.permisosVistes) || Array.isArray(obertPermisos?.permisosEdicio)
 
   const guardarPermisos = async () => {
     if (!obertPermisos) return
     setGuardantPermisos(true)
     try {
-      await updateDoc(doc(db, "admins", obertPermisos.id), { permisosVistes: seleccioPermisos })
+      await updateDoc(doc(db, "admins", obertPermisos.id), {
+        permisosVistes: seleccioPermisos,
+        permisosEdicio: seleccioEdicio,
+      })
       await logAudit(userData, "permisos.setVistes", {
         target: obertPermisos.id,
-        extra: { permisosVistes: seleccioPermisos },
+        extra: { permisosVistes: seleccioPermisos, permisosEdicio: seleccioEdicio },
       })
       setObertPermisos(null)
       load()
@@ -187,7 +226,10 @@ export default function PermisosVistesSection() {
     if (!obertPermisos) return
     setGuardantPermisos(true)
     try {
-      await updateDoc(doc(db, "admins", obertPermisos.id), { permisosVistes: deleteField() })
+      await updateDoc(doc(db, "admins", obertPermisos.id), {
+        permisosVistes: deleteField(),
+        permisosEdicio: deleteField(),
+      })
       await logAudit(userData, "permisos.resetVistes", { target: obertPermisos.id })
       setObertPermisos(null)
       load()
@@ -201,16 +243,36 @@ export default function PermisosVistesSection() {
 
   // ── Valors per defecte (només developer) ────────────────────────────
   const toggleDefecte = (rolObjectiu, key) => {
-    const setter = rolObjectiu === "admin" ? setPlantillaAdmin : setPlantillaEntrenador
-    setter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+    const setterVeure = rolObjectiu === "admin" ? setPlantillaAdmin : setPlantillaEntrenador
+    const setterEdicio = rolObjectiu === "admin" ? setPlantillaAdminEdicio : setPlantillaEntrenadorEdicio
+    setterVeure((prev) => {
+      const ara = prev.includes(key)
+      // Treure la visualització per defecte també treu l'edició per defecte.
+      if (ara) setterEdicio((prevE) => prevE.filter((k) => k !== key))
+      return ara ? prev.filter((k) => k !== key) : [...prev, key]
+    })
+  }
+
+  const toggleDefecteEdicio = (rolObjectiu, key) => {
+    const veurePlantilla = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
+    if (!veurePlantilla.includes(key)) return // no editable si no és visible per defecte
+    const setterEdicio = rolObjectiu === "admin" ? setPlantillaAdminEdicio : setPlantillaEntrenadorEdicio
+    setterEdicio((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
   const guardarDefecte = async (rolObjectiu) => {
     setGuardantDefecte(rolObjectiu)
     try {
-      const plantilla = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
-      await setDoc(doc(db, "config", "permisosDefault"), { [rolObjectiu]: plantilla }, { merge: true })
-      await logAudit(userData, "permisos.setDefecte", { extra: { rol: rolObjectiu, permisosVistes: plantilla } })
+      const plantillaVeure = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
+      const plantillaEdicio = rolObjectiu === "admin" ? plantillaAdminEdicio : plantillaEntrenadorEdicio
+      await setDoc(
+        doc(db, "config", "permisosDefault"),
+        { [rolObjectiu]: plantillaVeure, [`${rolObjectiu}Edicio`]: plantillaEdicio },
+        { merge: true }
+      )
+      await logAudit(userData, "permisos.setDefecte", {
+        extra: { rol: rolObjectiu, permisosVistes: plantillaVeure, permisosEdicio: plantillaEdicio },
+      })
     } catch (err) {
       console.error(err)
       await alertDialog("Error desant els valors per defecte: " + err.message)
@@ -219,11 +281,12 @@ export default function PermisosVistesSection() {
     }
   }
 
-  // Desa la plantilla i, a més, sobreescriu permisosVistes de TOTS els
-  // usuaris existents amb aquell rol (inclosos els que ja tenien un
-  // personalitzat propi — per això es demana confirmació).
+  // Desa la plantilla (veure + editar) i, a més, sobreescriu permisosVistes/
+  // permisosEdicio de TOTS els usuaris existents amb aquell rol (inclosos els
+  // que ja tenien un personalitzat propi — per això es demana confirmació).
   const aplicarATots = async (rolObjectiu) => {
-    const plantilla = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
+    const plantillaVeure = rolObjectiu === "admin" ? plantillaAdmin : plantillaEntrenador
+    const plantillaEdicio = rolObjectiu === "admin" ? plantillaAdminEdicio : plantillaEntrenadorEdicio
     const objectius = usuaris.filter((u) => u.rol === rolObjectiu)
     if (objectius.length === 0) {
       await alertDialog(`No hi ha cap usuari amb rol "${rolObjectiu === "admin" ? "admin" : "entrenador"}".`)
@@ -232,20 +295,26 @@ export default function PermisosVistesSection() {
     const ok = await confirmDialog(
       `Desar aquests valors per defecte i aplicar-los als ${objectius.length} usuari(s) amb rol "${
         rolObjectiu === "admin" ? "admin" : "entrenador"
-      }"? Se'ls sobreescriurà qualsevol personalització que tinguessin.`,
+      }"? Se'ls sobreescriurà qualsevol personalització que tinguessin (visualització i edició).`,
       { danger: true }
     )
     if (!ok) return
     setAplicant(rolObjectiu)
     try {
-      await setDoc(doc(db, "config", "permisosDefault"), { [rolObjectiu]: plantilla }, { merge: true })
+      await setDoc(
+        doc(db, "config", "permisosDefault"),
+        { [rolObjectiu]: plantillaVeure, [`${rolObjectiu}Edicio`]: plantillaEdicio },
+        { merge: true }
+      )
       for (const bloc of chunk(objectius, BATCH_SIZE)) {
         const batch = writeBatch(db)
-        bloc.forEach((u) => batch.update(doc(db, "admins", u.id), { permisosVistes: plantilla }))
+        bloc.forEach((u) =>
+          batch.update(doc(db, "admins", u.id), { permisosVistes: plantillaVeure, permisosEdicio: plantillaEdicio })
+        )
         await batch.commit()
       }
       await logAudit(userData, "permisos.aplicarDefecte", {
-        extra: { rol: rolObjectiu, permisosVistes: plantilla, afectats: objectius.length },
+        extra: { rol: rolObjectiu, permisosVistes: plantillaVeure, permisosEdicio: plantillaEdicio, afectats: objectius.length },
       })
       load()
     } catch (err) {
@@ -291,7 +360,7 @@ export default function PermisosVistesSection() {
   if (!potGestionarPermisos) {
     return (
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Permisos de visualització</h1>
+        <h1 className="text-2xl font-bold mb-2">Permisos de visualització i edició</h1>
         <div className="flex items-center gap-2 rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <EyeOff className="h-4 w-4" />
           Encara no tens cap gestió delegada. Demana a un developer que t'assigni entrenadors a gestionar.
@@ -303,11 +372,11 @@ export default function PermisosVistesSection() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Permisos de visualització</h1>
+        <h1 className="text-2xl font-bold">Permisos de visualització i edició</h1>
         <p className="text-xs text-muted-foreground mt-1">
           {esDeveloper
-            ? "Tria què veu cada usuari al menú. Si no personalitzes ningú, es manté el comportament de sempre segons el rol."
-            : "Pots personalitzar què veuen els entrenadors que et té assignats el developer."}
+            ? "Tria què veu i on pot editar cada usuari. Si no personalitzes ningú, es manté el comportament de sempre segons el rol (qui veu una secció, hi pot editar lliurement)."
+            : "Pots personalitzar què veuen i on poden editar els entrenadors que et té assignats el developer."}
         </p>
       </div>
 
@@ -318,35 +387,42 @@ export default function PermisosVistesSection() {
             <SlidersHorizontal className="h-4.5 w-4.5" /> Valors per defecte
           </h2>
           <p className="text-xs text-muted-foreground mt-1 mb-3">
-            El que veu, per defecte, tothom amb aquest rol que no tingui permisos personalitzats propis.
-            "Aplicar a tots" també sobreescriu qui ja en tenia un de personalitzat.
+            El que veu i on pot editar, per defecte, tothom amb aquest rol que no tingui permisos personalitzats
+            propis. "Aplicar a tots" també sobreescriu qui ja en tenia un de personalitzat. "Editar" només es pot
+            marcar si "Veure" ja ho està.
           </p>
 
           {carregantDefectes ? (
             <p className="text-sm text-muted-foreground">Carregant...</p>
           ) : (
             <>
-              <div className="rounded-lg border">
+              <div className="rounded-lg border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Secció</TableHead>
-                      <TableHead className="text-center w-28">Entrenador</TableHead>
-                      <TableHead className="text-center w-28">Admin</TableHead>
+                      <TableHead rowSpan={2} className="align-bottom">Secció</TableHead>
+                      <TableHead colSpan={2} className="text-center border-l">Entrenador</TableHead>
+                      <TableHead colSpan={2} className="text-center border-l">Admin</TableHead>
+                    </TableRow>
+                    <TableRow>
+                      <TableHead className="text-center w-16 text-xs border-l">Veure</TableHead>
+                      <TableHead className="text-center w-16 text-xs">Editar</TableHead>
+                      <TableHead className="text-center w-16 text-xs border-l">Veure</TableHead>
+                      <TableHead className="text-center w-16 text-xs">Editar</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {GRUPS_PERSONALITZABLES.map((grup) => (
                       <Fragment key={grup.label}>
                         <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableCell colSpan={3} className="text-xs font-semibold text-muted-foreground py-1.5">
+                          <TableCell colSpan={5} className="text-xs font-semibold text-muted-foreground py-1.5">
                             {grup.label}
                           </TableCell>
                         </TableRow>
                         {grup.items.map((item) => (
                           <TableRow key={item.key}>
                             <TableCell className="text-sm">{item.label}</TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="text-center border-l">
                               <div className="flex justify-center">
                                 <Checkbox
                                   checked={plantillaEntrenador.includes(item.key)}
@@ -357,8 +433,26 @@ export default function PermisosVistesSection() {
                             <TableCell className="text-center">
                               <div className="flex justify-center">
                                 <Checkbox
+                                  checked={plantillaEntrenadorEdicio.includes(item.key)}
+                                  disabled={!plantillaEntrenador.includes(item.key)}
+                                  onCheckedChange={() => toggleDefecteEdicio("entrenador", item.key)}
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center border-l">
+                              <div className="flex justify-center">
+                                <Checkbox
                                   checked={plantillaAdmin.includes(item.key)}
                                   onCheckedChange={() => toggleDefecte("admin", item.key)}
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex justify-center">
+                                <Checkbox
+                                  checked={plantillaAdminEdicio.includes(item.key)}
+                                  disabled={!plantillaAdmin.includes(item.key)}
+                                  onCheckedChange={() => toggleDefecteEdicio("admin", item.key)}
                                 />
                               </div>
                             </TableCell>
@@ -433,13 +527,22 @@ export default function PermisosVistesSection() {
                 </span>
               </TableCell>
               <TableCell>
-                {Array.isArray(u.permisosVistes) ? (
-                  <span className="flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold w-fit">
-                    <Eye className="h-3 w-3" /> Personalitzat ({u.permisosVistes.length})
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Per defecte ({rolLabel(u)})</span>
-                )}
+                <div className="flex flex-wrap gap-1">
+                  {Array.isArray(u.permisosVistes) ? (
+                    <span className="flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold w-fit">
+                      <Eye className="h-3 w-3" /> Veure: {u.permisosVistes.length}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Veure per defecte</span>
+                  )}
+                  {Array.isArray(u.permisosEdicio) ? (
+                    <span className="flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 text-xs px-2 py-0.5 font-semibold w-fit">
+                      <Pencil className="h-3 w-3" /> Editar: {u.permisosEdicio.length}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Editar per defecte</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-right">
                 <Button size="sm" variant="secondary" onClick={() => obrirPermisos(u)}>
@@ -502,7 +605,7 @@ export default function PermisosVistesSection() {
         </div>
       )}
 
-      {/* ── Diàleg: editar permisos de visualització ──────────────────── */}
+      {/* ── Diàleg: editar permisos (visualització + edició) ──────────── */}
       <Dialog open={!!obertPermisos} onOpenChange={(o) => { if (!o) setObertPermisos(null) }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -525,15 +628,28 @@ export default function PermisosVistesSection() {
             {GRUPS_PERSONALITZABLES.map((grup) => (
               <div key={grup.label}>
                 <p className="text-xs font-semibold text-muted-foreground mb-2">{grup.label}</p>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {grup.items.map((item) => (
-                    <label key={item.key} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox
-                        checked={seleccioPermisos.includes(item.key)}
-                        onCheckedChange={() => toggleItem(item.key)}
-                      />
-                      {item.label}
-                    </label>
+                    <div key={item.key} className="flex items-center justify-between gap-3 text-sm">
+                      <span>{item.label}</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox
+                            checked={seleccioPermisos.includes(item.key)}
+                            onCheckedChange={() => toggleItem(item.key)}
+                          />
+                          Veure
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox
+                            checked={seleccioEdicio.includes(item.key)}
+                            disabled={!seleccioPermisos.includes(item.key)}
+                            onCheckedChange={() => toggleEdicio(item.key)}
+                          />
+                          Editar
+                        </label>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
