@@ -7,9 +7,9 @@ import { logAudit } from "@/lib/auditLog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
-import { Settings, MessageCircle, Loader2 } from "lucide-react"
+import { Settings, MessageCircle, Loader2, Mail } from "lucide-react"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 
 // Configuració global per categoria, guardada a config/whatsapp (enllaç del
 // grup de WhatsApp de cada categoria, que es mostra als pares des del seu
@@ -25,12 +25,19 @@ export default function ConfiguracioSection() {
   const [rows, setRows] = useState(
     TOTES_CATEGORIES.map((categoria) => ({ categoria, whatsapp: "" }))
   )
+  // Correus on s'envien les inscripcions a competicions quan es tanquen
+  // (config_privada/inscripcions — no és públic, a diferència de "config").
+  const [emailsInscripcions, setEmailsInscripcions] = useState("")
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
-        const whatsappSnap = await getDoc(doc(db, "config", "whatsapp"))
+        const [whatsappSnap, insSnap] = await Promise.all([
+          getDoc(doc(db, "config", "whatsapp")),
+          getDoc(doc(db, "config_privada", "inscripcions")).catch(() => null),
+        ])
+        setEmailsInscripcions(insSnap?.exists() ? (insSnap.data().emails ?? "") : "")
         const whatsapp = whatsappSnap.exists() ? whatsappSnap.data() : {}
         setRows(
           TOTES_CATEGORIES.map((categoria) => ({
@@ -58,6 +65,7 @@ export default function ConfiguracioSection() {
         if (r.whatsapp.trim()) whatsapp[r.categoria] = r.whatsapp.trim()
       })
       await setDoc(doc(db, "config", "whatsapp"), whatsapp)
+      await setDoc(doc(db, "config_privada", "inscripcions"), { emails: emailsInscripcions.trim() }, { merge: true })
       toast({ title: "Configuració desada", description: "Els canvis ja són efectius per a tothom" })
       logAudit(userData, "config.update", {
         extra: { categories: rows.filter((r) => r.whatsapp).map((r) => r.categoria).join(", ") },
@@ -106,6 +114,21 @@ export default function ConfiguracioSection() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 rounded-lg border p-4 space-y-1.5">
+        <label className="flex items-center gap-1.5 text-sm font-semibold">
+          <Mail className="h-4 w-4" />
+          Correu per a les inscripcions a competicions
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Quan es tanquen les inscripcions d'una competició (per defecte, el divendres de la setmana anterior), s'hi envia la llista d'inscrits. Pots posar-ne més d'un separats per comes.
+        </p>
+        <Input
+          placeholder="entrenadors@exemple.com, coordinacio@exemple.com"
+          value={emailsInscripcions}
+          onChange={(e) => setEmailsInscripcions(e.target.value)}
+        />
       </div>
 
       <Button className="mt-4" disabled={saving} onClick={guardar}>

@@ -15,6 +15,7 @@ import {
   UploadCloud,
   Eye,
   Award,
+  DatabaseBackup,
 } from "lucide-react"
 
 // Menú agrupat per blocs temàtics (no un sol calaix "Gestió") perquè d'un
@@ -70,6 +71,7 @@ export const adminMenu = [
       { key: "importar-atletes-csv", label: "Importar atletes (CSV)", icon: UploadCloud, developerOnly: true },
       { key: "permisos-vistes", label: "Permisos de visualització", icon: Eye, nomesGestors: true },
       { key: "audit-log", label: "Registre d'auditoria", icon: ScrollText, developerOnly: true },
+      { key: "backup", label: "Còpies de seguretat", icon: DatabaseBackup, developerOnly: true },
     ],
   },
 ]

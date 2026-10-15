@@ -1,3 +1,4 @@
+import { esAtletaVigent } from "@/lib/categoria"
 import { useState, useRef, useCallback } from "react"
 import {
   collection, getDocs, addDoc, query, where, orderBy, Timestamp
@@ -364,7 +365,7 @@ export default function ImportarResultatsPDF({ eventId }) {
         getDocs(query(collection(db, "events"), orderBy("date", "desc"))),
       ])
       const atletesAll = atletesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const atletesData = filtraCat(atletesAll, "categoria")
+      const atletesData = filtraCat(atletesAll.filter(a => esAtletaVigent(a)), "categoria")
       const provesData = provesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const eventsData = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       setAtletes(atletesData)
@@ -493,7 +494,7 @@ export default function ImportarResultatsPDF({ eventId }) {
         getDocs(query(collection(db, "events"), orderBy("date", "desc"))),
       ])
       const atletesAll2 = atletesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const atletesData = filtraCat(atletesAll2, "categoria")
+      const atletesData = filtraCat(atletesAll2.filter(a => esAtletaVigent(a)), "categoria")
       const provesData  = provesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const eventsData2 = eventsSnap2.docs.map(d => ({ id: d.id, ...d.data() }))
       setAtletes(atletesData)

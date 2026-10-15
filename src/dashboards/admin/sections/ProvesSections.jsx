@@ -45,7 +45,7 @@ import {
 import { Plus, X, UsersRound, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 const TOTS_TIPUS = ["velocitat", "fons", "salt", "llançament", "marxa", "altres"]
 
 // Restricció de pista per categoria — la mateixa prova pot fer-se a coberta

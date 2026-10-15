@@ -13,7 +13,7 @@ import {
 import QRCode from "qrcode"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
-import { categoriaPerNaixement } from "@/lib/categoria"
+import { categoriaPerNaixement, esAtletaVigent } from "@/lib/categoria"
 import { logAudit } from "@/lib/auditLog"
 import { urlAcces } from "@/lib/accesPares"
 import { codisDe, generarCodi } from "@/lib/codisAcces"
@@ -84,7 +84,7 @@ import { format } from "date-fns"
 import { ca } from "date-fns/locale"
 
 const DEFAULT_BIRTH_DATE = new Date(new Date().getFullYear() - 8, 0, 1)
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 
 // Firestore writeBatch admet un màxim de 500 operacions. Trossegem per anar bé
 // encara que algú seleccioni tot el club de cop.
@@ -249,7 +249,8 @@ export default function AthletesSection() {
         getDocs(collection(db, "athletes")),
         getDocs(collection(db, "athlete_notes")),
       ])
-      setAthletes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      // Només Sub-8 – Sub-14: els atletes d'altres categories queden fora de l'app.
+      setAthletes(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => esAtletaVigent(a)))
       const notesMap = {}
       notesSnap.docs.forEach(d => { notesMap[d.id] = d.data().text ?? "" })
       setAthleteNotes(notesMap)
@@ -579,6 +580,10 @@ export default function AthletesSection() {
     )
     if (!form.nom || codisNetejats.length === 0) {
       toast({ variant: "destructive", title: "Dades incompletes", description: "Nom i almenys un codi d'accés son obligatoris" })
+      return
+    }
+    if (!categoriaPerNaixement(form.naixement)) {
+      toast({ variant: "destructive", title: "Fora de categoria", description: "Només es poden afegir atletes de Sub-8 a Sub-14 segons l'any de naixement" })
       return
     }
     try {

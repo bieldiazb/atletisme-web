@@ -7,7 +7,7 @@ import {
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
-import { categoriaPerAny } from "@/lib/categoria"
+import { categoriaPerAny, esAtletaVigent } from "@/lib/categoria"
 import { agruparProvesPerTipus } from "@/lib/proves"
 
 import {
@@ -133,7 +133,7 @@ export default function AdminEstadistiquesSection() {
 
       const atletesAll = athletesSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(a => a.actiu !== false)
+        .filter(a => a.actiu !== false && esAtletaVigent(a))
         .sort((a, b) => (a.nom ?? "").localeCompare(b.nom ?? "", "ca"))
       // Filtra per categoria del rol
       const atletesData = filtraCat(atletesAll, "categoria")

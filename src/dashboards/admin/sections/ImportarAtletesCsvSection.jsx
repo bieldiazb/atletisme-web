@@ -158,6 +158,7 @@ export default function ImportarAtletesCsvSection() {
       }
 
       const categoria = naixement ? categoriaPerNaixement(naixement) : null
+      if (naixement && !categoria) errors.push("fora del rang Sub-8 – Sub-14")
       const actiu = parseActiu(r.actiu)
 
       return { linia, nom, sexe, naixement, categoria, codi, actiu, errors, valid: errors.length === 0 }

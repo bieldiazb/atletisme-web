@@ -34,7 +34,7 @@ import { ChevronDown, ChevronUp, Loader2, Users, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { ca } from "date-fns/locale"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 
 // Firestore writeBatch admet un màxim de 500 operacions.
 const BATCH_SIZE = 450

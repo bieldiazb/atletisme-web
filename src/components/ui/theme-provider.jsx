@@ -2,31 +2,53 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 const ThemeContext = createContext({
   theme: "system",
+  resolvedTheme: "light",
   setTheme: () => {},
 });
 
+const MQ = "(prefers-color-scheme: dark)";
+
+function llegeix(storageKey, defaultTheme) {
+  try {
+    const t = localStorage.getItem(storageKey);
+    return t === "light" || t === "dark" || t === "system" ? t : defaultTheme;
+  } catch {
+    return defaultTheme;
+  }
+}
+
 export function ThemeProvider({ children, defaultTheme = "system", storageKey = "vite-ui-theme" }) {
-  const [theme, setTheme] = useState(
-    localStorage.getItem(storageKey) || defaultTheme
-  );
+  const [theme, setThemeState] = useState(() => llegeix(storageKey, defaultTheme));
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia(MQ).matches);
+
+  // Segueix el tema del sistema mentre l'usuari no n'hagi triat un de fix.
+  useEffect(() => {
+    const mq = window.matchMedia(MQ);
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Tema realment aplicat ("light" | "dark"), també quan és "system".
+  const resolvedTheme = theme === "system" ? (systemDark ? "dark" : "light") : theme;
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
-
-    if (theme === "system") {
-      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      root.classList.add(systemDark ? "dark" : "light");
-    } else {
-      root.classList.add(theme);
-    }
-  }, [theme]);
+    root.classList.add(resolvedTheme);
+    root.style.colorScheme = resolvedTheme;
+  }, [resolvedTheme]);
 
   const value = {
     theme,
+    resolvedTheme,
     setTheme: (t) => {
-      localStorage.setItem(storageKey, t);
-      setTheme(t);
+      try {
+        localStorage.setItem(storageKey, t);
+      } catch {
+        /* sense emmagatzematge: el tema només dura la sessió */
+      }
+      setThemeState(t);
     },
   };
 

@@ -1,3 +1,4 @@
+import { esAtletaVigent } from "@/lib/categoria"
 import { useEffect, useState } from "react"
 import {
   collection,
@@ -75,7 +76,7 @@ import { format } from "date-fns"
 import { ca } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 
 // Ha d'anar en línia amb el mateix llistat a EventsSection.jsx — es guarda a
 // l'event i aquí només el llegim per mostrar-lo a cada marca.
@@ -159,7 +160,7 @@ export default function MarquesSection() {
     const provesMap = {}
     p.docs.forEach(d => (provesMap[d.id] = d.data().nom))
 
-    setAthletes(a.docs.map(d => ({ id: d.id, ...d.data() })))
+    setAthletes(a.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => esAtletaVigent(x)))
     setEvents(e.docs.map(d => ({ id: d.id, ...d.data() })))
     setProves(p.docs.map(d => ({ id: d.id, ...d.data() })))
 

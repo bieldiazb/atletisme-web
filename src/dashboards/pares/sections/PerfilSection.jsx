@@ -65,8 +65,6 @@ function getCategoryColor(cat) {
     "Sub-10": { bg: "from-orange-400 to-amber-500",  light: "bg-amber-50 text-amber-700 border-amber-200" },
     "Sub-12": { bg: "from-green-400 to-emerald-500", light: "bg-emerald-50 text-emerald-700 border-emerald-200" },
     "Sub-14": { bg: "from-blue-400 to-cyan-500",     light: "bg-cyan-50 text-cyan-700 border-cyan-200" },
-    "Sub-16": { bg: "from-violet-400 to-purple-500", light: "bg-violet-50 text-violet-700 border-violet-200" },
-    "Sub-18": { bg: "from-slate-500 to-slate-700",   light: "bg-slate-50 text-slate-700 border-slate-200" },
     "Absolut":{ bg: "from-yellow-400 to-orange-500", light: "bg-yellow-50 text-yellow-700 border-yellow-200" },
   }
   return map[cat] || map["Absolut"]

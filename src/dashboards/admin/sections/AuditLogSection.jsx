@@ -23,6 +23,7 @@ import { format } from "date-fns"
 import { ca } from "date-fns/locale"
 
 const ACCIONS = [
+  "backup.export",
   "createAdminUser",
   "deleteAdminUser",
   "setUserDisabled",

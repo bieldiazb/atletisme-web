@@ -31,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Shield, Lock, KeyRound, Ban, UserCheck, Mail, Wrench } from "lucide-react"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 const FORM_BUIT = { nom: "", email: "", password: "", rol: "admin", categories: [] }
 
 export default function AdminsSection() {
@@ -62,7 +62,9 @@ export default function AdminsSection() {
   // Un entrenador no pot canviar el seu propi rol (no es pot auto-promoure)
   // Només un admin pot crear/eliminar usuaris o canviar rols
 
+  // El perfil d'un developer només el pot tocar un developer (o ell mateix).
   const potEditar = (admin) => {
+    if (admin.isDeveloper && !esDeveloper && admin.id !== uidActual) return false
     if (esAdmin) return true
     return admin.id === uidActual // entrenador només el seu
   }
@@ -70,6 +72,7 @@ export default function AdminsSection() {
   const potEliminar = (admin) => {
     if (!esAdmin) return false          // entrenadors no poden eliminar ningú
     if (admin.id === uidActual) return false // un admin no es pot auto-eliminar
+    if (admin.isDeveloper && !esDeveloper) return false // només un developer elimina un developer
     return true
   }
 
@@ -346,13 +349,15 @@ export default function AdminsSection() {
                 </div>
               </TableCell>
               <TableCell>
+                {/* Només el rol amb més permisos: developer > admin > entrenador */}
                 <div className="flex items-center gap-1 flex-wrap">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rolBadge(a.rol ?? "admin")}`}>
-                    {a.rol === "entrenador" ? "Entrenador" : "Admin"}
-                  </span>
-                  {a.isDeveloper && (
+                  {a.isDeveloper ? (
                     <span className="flex items-center gap-1 rounded-full bg-violet-100 text-violet-700 text-xs px-2 py-0.5 font-semibold">
                       <Wrench className="h-3 w-3" /> Developer
+                    </span>
+                  ) : (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rolBadge(a.rol ?? "admin")}`}>
+                      {a.rol === "entrenador" ? "Entrenador" : "Admin"}
                     </span>
                   )}
                 </div>

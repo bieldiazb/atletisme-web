@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react"
 import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
-import { categoriaPerAny } from "@/lib/categoria"
+import { categoriaPerAny, esAtletaVigent } from "@/lib/categoria"
 
 import {
   Select,
@@ -91,9 +91,6 @@ const COLOR_CAT = {
   "Sub-10":  "bg-amber-100 text-amber-700 border-amber-200",
   "Sub-12":  "bg-emerald-100 text-emerald-700 border-emerald-200",
   "Sub-14":  "bg-cyan-100 text-cyan-700 border-cyan-200",
-  "Sub-16":  "bg-violet-100 text-violet-700 border-violet-200",
-  "Sub-18":  "bg-slate-100 text-slate-600 border-slate-200",
-  "Absolut": "bg-yellow-100 text-yellow-700 border-yellow-200",
 }
 
 // Colors del badge de punts FCA segons el rang
@@ -753,7 +750,7 @@ export default function EquipOptimSection() {
 
     const atletesData = athletesSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(a => a.actiu !== false)
+      .filter(a => a.actiu !== false && esAtletaVigent(a))
 
     const provesData = provesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 

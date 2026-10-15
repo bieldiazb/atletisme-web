@@ -1,3 +1,4 @@
+import { esAtletaVigent } from "@/lib/categoria"
 import { useEffect, useState } from "react"
 import {
   collection,
@@ -64,7 +65,7 @@ import {
 
 import { useToast } from "@/hooks/use-toast"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 const NUM_ATLETES_DEFECTE = 4
 
 // Firestore writeBatch admet un màxim de 500 operacions.
@@ -126,7 +127,7 @@ export default function MarquesRelleuSection() {
     const provesMap = {}
     p.docs.forEach(d => (provesMap[d.id] = d.data()))
 
-    setAthletes(a.docs.map(d => ({ id: d.id, ...d.data() })))
+    setAthletes(a.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => esAtletaVigent(x)))
     setEvents(e.docs.map(d => ({ id: d.id, ...d.data() })))
     setProves(p.docs.map(d => ({ id: d.id, ...d.data() })))
 

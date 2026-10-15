@@ -260,7 +260,7 @@ export default function ParesDashboard() {
             {view === "perfil"        && <PerfilSection    athleteId={athleteId} temporada={temporada} />}
             {view === "resultats"     && <ResultatsSection athleteId={athleteId} />}
             {view === "estadistiques" && <EstadistiquesSection athleteId={athleteId} temporada={temporada} />}
-            {view === "calendari"     && <CalendariSection categories={categoriesGermans} siblings={siblings} />}
+            {view === "calendari"     && <CalendariSection categories={categoriesGermans} siblings={siblings} codi={code} />}
             {view === "diploma" && diplomaVisible && <DiplomaSection athleteId={athleteId} temporada={temporada} />}
 
           </div>

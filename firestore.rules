@@ -75,17 +75,38 @@ service cloud.firestore {
     match /admins/{uid} {
       allow read: if isStaff();
 
-      // Creació: com sempre, qualsevol admin complet — però mai amb
-      // potGestionar ja preomplert (només es concedeix des d'una
-      // actualització posterior, feta pel developer).
-      allow create: if isAdminRole() && !("potGestionar" in request.resource.data);
+      // Camps que NOMÉS escriuen les Cloud Functions (Admin SDK, que no passa
+      // per aquestes regles): el rol developer, l'estat d'accés desactivat i
+      // l'email (que va lligat al compte de Firebase Auth). Cap client pot
+      // tocar-los, ni un admin ni el mateix usuari — si no, qualsevol
+      // entrenador podria fer-se developer des de la consola del navegador.
+      function toqueCampsServidor() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasAny(["isDeveloper", "disabled", "email"]);
+      }
+      // Un perfil de developer només el pot editar un developer (o ell mateix).
+      function objectiuEsDeveloper() {
+        return resource.data.get('isDeveloper', false) == true;
+      }
 
-      // Escriptura general (nom, rol, categories, email, disabled...): com
-      // sempre, un admin complet pot editar qualsevol perfil i tothom pot
-      // editar el seu — sempre que la crida no toqui els camps de permisos,
-      // que tenen les seves pròpies regles just a sota.
-      allow update: if (isAdminRole() || request.auth.uid == uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["permisosVistes", "permisosEdicio", "potGestionar"]);
+      // Creació: com sempre, qualsevol admin complet — però mai amb
+      // potGestionar, isDeveloper ni disabled preomplerts (només es
+      // concedeixen més tard, per via developer / Cloud Function).
+      allow create: if isAdminRole()
+        && !("potGestionar" in request.resource.data)
+        && !("isDeveloper" in request.resource.data)
+        && !("disabled" in request.resource.data);
+
+      // Escriptura general (nom, rol, categories...): un admin complet pot
+      // editar qualsevol perfil excepte el d'un developer; cadascú pot editar
+      // el seu, però només nom i categories (mai el seu propi rol).
+      // Sempre sense tocar els camps de permisos (regles a sota) ni els
+      // camps reservats al servidor.
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(["permisosVistes", "permisosEdicio", "potGestionar"])
+        && !toqueCampsServidor()
+        && (
+          (isAdminRole() && (!objectiuEsDeveloper() || isDeveloperRole()) && request.auth.uid != uid)
+          || (request.auth.uid == uid && afectaNomes(["nom", "categories", "updatedAt"]))
+        );
 
       // potGestionar: només developer el pot escriure.
       allow update: if isDeveloperRole() && afectaNomes(["potGestionar"]);
@@ -137,6 +158,22 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+    // ── Inscripcions a competicions ─────────────────────────────────────
+    // Els pares NO hi accedeixen directament: llegeixen i escriuen via les
+    // Cloud Functions getInscripcionsPares / setInscripcioPares, que
+    // validen el codi d'accés al servidor. L'staff les pot veure i
+    // corregir (apuntar/desapuntar algú a mà) des de Calendari.
+    match /inscripcions/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // ── Configuració privada (correus destinataris de les inscripcions):
+    // a diferència de "config", NO és pública.
+    match /config_privada/{id} {
+      allow read: if isStaff();
+      allow write: if isAdminRole();
+    }
+
     // ── Assistència: només staff — els pares no ho veuen enlloc ─────────
     match /assistencies/{id} {
       allow read, write: if isStaff();
@@ -174,7 +211,9 @@ service cloud.firestore {
     // sols un developer).
     match /audit_logs/{id} {
       allow read: if isDeveloperRole();
-      allow create: if isStaff();
+      // Només es pot registrar com a un mateix (no es poden falsificar
+      // entrades a nom d'un altre usuari).
+      allow create: if isStaff() && request.resource.data.actorUid == request.auth.uid;
       allow update, delete: if false;
     }
 

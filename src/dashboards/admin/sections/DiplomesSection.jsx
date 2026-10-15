@@ -1,3 +1,4 @@
+import { esAtletaVigent } from "@/lib/categoria"
 import { useEffect, useMemo, useState } from "react"
 import { collection, doc, getDocs, updateDoc, writeBatch } from "firebase/firestore"
 import JSZip from "jszip"
@@ -32,7 +33,7 @@ import {
 } from "@/components/ui/table"
 import { Award, Eye, EyeOff, FileDown, Loader2 } from "lucide-react"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 const ANY_ACTUAL = new Date().getFullYear()
 const ANYS_DISPONIBLES = [ANY_ACTUAL, ANY_ACTUAL - 1, ANY_ACTUAL - 2, ANY_ACTUAL - 3]
 
@@ -85,7 +86,7 @@ export default function DiplomesSection() {
           carregarProves(),
         ])
         setProves(provesMap)
-        setAthletes(filtraCat(athletesSnap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+        setAthletes(filtraCat(athletesSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => esAtletaVigent(a))))
       } finally {
         setLoading(false)
       }

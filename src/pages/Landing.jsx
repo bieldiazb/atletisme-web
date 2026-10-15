@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { UserX, Loader2 } from "lucide-react"
+import InstalaApp from "@/components/InstalaApp"
 
 /**
  * Login de pares — dos fluxos:
@@ -41,6 +42,7 @@ const ERROR_MESSAGES = {
   empty:     { title: "Codi buit",         body: "Introdueix el codi per continuar." },
   not_found: { title: "Codi no trobat",     body: "No hem trobat cap atleta ni categoria amb aquest codi." },
   error:     { title: "Error de connexió",  body: "No s'ha pogut connectar. Torna-ho a provar." },
+  bloquejat: { title: "Massa intents",      body: "Has provat massa codis erronis. Espera una estona i torna-ho a provar; si no tens el codi, demana'l al club." },
 }
 
 export default function Landing({ className }) {
@@ -203,6 +205,8 @@ export default function Landing({ className }) {
                 <FieldDescription className="text-center">
                   Accés privat per famílies i entrenadors
                 </FieldDescription>
+
+                <InstalaApp />
               </FieldGroup>
             </Tabs>
           </div>

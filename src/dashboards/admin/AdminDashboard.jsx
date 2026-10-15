@@ -20,6 +20,7 @@ import MarquesRelleuSection  from "./sections/MarquesRelleuSection"
 import ProvesSection         from "./sections/ProvesSections"
 import AdminsSection         from "./sections/AdminsSection"
 import AuditLogSection       from "./sections/AuditLogSection"
+import BackupSection         from "./sections/BackupSection"
 import ConfiguracioSection   from "./sections/ConfiguracioSection"
 import ImportarAtletesCsvSection from "./sections/ImportarAtletesCsvSection"
 import PermisosVistesSection from "./sections/PermisosVistesSection"
@@ -65,7 +66,7 @@ function DashboardContent() {
         setView={setView}
         menu={menuFiltrat}
         title={dashboardTitle}
-        subtitle={rol === "developer" ? "Desenvolupador" : rol === "admin" ? "Administrador" : `Entrenador ${categories.join(", ")}`}
+        subtitle={esDeveloper ? "Developer" : rol === "admin" ? "Administrador" : `Entrenador ${categories.join(", ")}`}
         footer={
           !esAdmin && categories.length > 0 ? (
             <div className="px-4 py-3 border-t space-y-1">
@@ -104,9 +105,10 @@ function DashboardContent() {
           {view === "diplomes"      && <DiplomesSection />}
           {view === "create-admin"  && <AdminsSection />}
           {view === "configuracio"  && <ConfiguracioSection />}
-          {view === "importar-atletes-csv" && <ImportarAtletesCsvSection />}
+          {esDeveloper && view === "importar-atletes-csv" && <ImportarAtletesCsvSection />}
           {view === "permisos-vistes" && <PermisosVistesSection />}
-          {view === "audit-log"     && <AuditLogSection />}
+          {esDeveloper && view === "audit-log"     && <AuditLogSection />}
+          {esDeveloper && view === "backup"        && <BackupSection />}
         </div>
 
         {isMobile && (

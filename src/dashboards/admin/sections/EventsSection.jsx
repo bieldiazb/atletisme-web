@@ -8,10 +8,22 @@ import {
   doc,
   Timestamp,
   writeBatch,
+  deleteField,
 } from "firebase/firestore"
 import { db } from "../../../../firebaseClient"
 import { useUser } from "../../../../UserContext"
 import { logAudit } from "@/lib/auditLog"
+import {
+  tancamentDe,
+  tancamentPerDefecte,
+  tancamentDesDeUltimDia,
+  ultimDiaInscripcio,
+  inscripcionsActives,
+} from "@/lib/inscripcions"
+import InscripcionsEventSheet from "./InscripcionsEventSheet"
+import ProvesPerCategoriaEditor from "./ProvesPerCategoriaEditor"
+import CercadorFCA from "./CercadorFCA"
+import { netejaProvesPerCategoria } from "@/lib/provesEvent"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,12 +78,15 @@ import {
   Plus,
   Search,
   X,
+  ClipboardList,
+  Lock,
+  MailCheck,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ca } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 
-const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14", "Sub-16", "Sub-18"]
+const TOTES_CATEGORIES = ["Sub-8", "Sub-10", "Sub-12", "Sub-14"]
 
 // Tipus de pista de l'event. Es guarda a l'event i es mostra també a cada marca
 // que hi estigui vinculada (a natació, coberta = 25m normalment, aire lliure = 50m).
@@ -156,19 +171,45 @@ export default function EventsSection() {
     )
   }
 
-  // Form: categories és un array de categories assignades a l'event
+  // Form: categories és un array de categories assignades a l'event.
+  // inscripcionsActives: els pares poden dir si hi van (per defecte sí).
+  // ultimDia: últim dia per apuntar-se si es vol canviar el per defecte
+  // (divendres de la setmana anterior); null = per defecte.
   const [form, setForm] = useState({
     title: "",
     lloc: "",
+    ubicacio: "",
     link: "",
     date: undefined,
     categories: [],
     tipusPista: "",
+    inscripcionsActives: true,
+    ultimDia: null,
+    provesPerCategoria: {},
   })
+  const [proves, setProves] = useState([])
+
+  // Nombre d'inscrits (va == true) per event, i event obert al panell d'inscripcions
+  const [inscritsPerEvent, setInscritsPerEvent] = useState({})
+  const [inscripcionsEventId, setInscripcionsEventId] = useState(null)
 
   const load = async () => {
     const snap = await getDocs(collection(db, "events"))
     setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    getDocs(collection(db, "proves"))
+      .then((ps) => setProves(ps.docs.map((d) => ({ id: d.id, ...d.data() }))))
+      .catch(() => {})
+    try {
+      const insSnap = await getDocs(collection(db, "inscripcions"))
+      const comptes = {}
+      insSnap.docs.forEach((d) => {
+        const x = d.data()
+        if (x.va === true) comptes[x.eventId] = (comptes[x.eventId] ?? 0) + 1
+      })
+      setInscritsPerEvent(comptes)
+    } catch {
+      setInscritsPerEvent({})
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -342,7 +383,7 @@ export default function EventsSection() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ title: "", lloc: "", date: undefined, categories: [], link: "", tipusPista: "" })
+    setForm({ title: "", lloc: "", ubicacio: "", date: undefined, categories: [], link: "", tipusPista: "", inscripcionsActives: true, ultimDia: null, provesPerCategoria: {} })
     setOpen(true)
   }
 
@@ -351,10 +392,16 @@ export default function EventsSection() {
     setForm({
       title: event.title,
       lloc: event.lloc ?? "",
+      ubicacio: event.ubicacio ?? "",
       date: event.date?.toDate ? event.date.toDate() : undefined,
       categories: event.categories ?? [],
       link: event.link ?? "",
       tipusPista: event.tipusPista ?? "",
+      inscripcionsActives: inscripcionsActives(event),
+      provesPerCategoria: event.provesPerCategoria ?? {},
+      ultimDia: event.tancamentInscripcions?.toDate
+        ? ultimDiaInscripcio(event.tancamentInscripcions.toDate())
+        : null,
     })
     setOpen(true)
   }
@@ -368,13 +415,48 @@ export default function EventsSection() {
       toast({ variant: "destructive", title: "Error", description: "Cal indicar el tipus de pista" })
       return
     }
+    // Amb inscripcions, cada categoria ha de tenir proves per a nens i nenes
+    // (els pares no poden dir que hi van sense triar-ne).
+    if (form.inscripcionsActives) {
+      const ppc = netejaProvesPerCategoria(form.provesPerCategoria, form.categories, form.tipusPista)
+      if (form.categories.length > 0) {
+        const falten = []
+        form.categories.forEach((cat) => {
+          if (!(ppc[cat]?.M ?? []).length) falten.push(`${cat} nens`)
+          if (!(ppc[cat]?.F ?? []).length) falten.push(`${cat} nenes`)
+        })
+        if (falten.length) {
+          toast({ variant: "destructive", title: form.tipusPista === "cross" ? "Falten distàncies" : "Falten proves", description: `${form.tipusPista === "cross" ? "Posa la distància a" : "Posa proves a"}: ${falten.join(", ")}` })
+          return
+        }
+      } else if (!Object.values(ppc).some((x) => (x?.M ?? []).length || (x?.F ?? []).length)) {
+        toast({ variant: "destructive", title: form.tipusPista === "cross" ? "Falten distàncies" : "Falten proves", description: form.tipusPista === "cross" ? "Posa la distància de cada categoria o desactiva les inscripcions" : "Posa les proves de cada categoria o desactiva les inscripcions" })
+        return
+      }
+    }
+    const tancamentNou = form.ultimDia ? tancamentDesDeUltimDia(form.ultimDia) : null
     const payload = {
       title: form.title,
       lloc: form.lloc,
+      ubicacio: form.ubicacio.trim(),
       date: Timestamp.fromDate(form.date),
       categories: form.categories,
       link: form.link,
       tipusPista: form.tipusPista,
+      inscripcionsActives: form.inscripcionsActives,
+      provesPerCategoria: netejaProvesPerCategoria(form.provesPerCategoria, form.categories, form.tipusPista),
+    }
+    if (tancamentNou) payload.tancamentInscripcions = Timestamp.fromDate(tancamentNou)
+    else if (editing?.tancamentInscripcions) payload.tancamentInscripcions = deleteField()
+    // Si ja s'havia enviat el correu però ara la data límit queda al futur
+    // (s'ha allargat o s'ha canviat la data de l'event), es torna a obrir i
+    // s'enviarà de nou quan es tanqui.
+    if (editing?.inscripcionsEnviadesAt) {
+      const efectiu = tancamentNou ?? tancamentPerDefecte(form.date)
+      if (efectiu > new Date()) {
+        payload.inscripcionsEnviadesAt = deleteField()
+        payload.inscripcionsEnviadesCount = deleteField()
+      }
     }
     if (editing) {
       await updateDoc(doc(db, "events", editing.id), payload)
@@ -447,6 +529,30 @@ export default function EventsSection() {
               <span key={c} className="rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-medium">{c}</span>
             ))}
           </div>
+        )
+      },
+    },
+    {
+      id: "inscrits",
+      header: "Inscrits",
+      cell: ({ row }) => {
+        const ev = row.original
+        if (!inscripcionsActives(ev)) return <span className="text-xs text-muted-foreground">—</span>
+        const n = inscritsPerEvent[ev.id] ?? 0
+        const tancament = tancamentDe(ev)
+        const tancada = tancament && new Date() >= tancament
+        return (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={(e) => { e.stopPropagation(); setInscripcionsEventId(ev.id) }}
+          >
+            {ev.inscripcionsEnviadesAt
+              ? <MailCheck className="h-3.5 w-3.5 text-emerald-600" />
+              : tancada ? <Lock className="h-3.5 w-3.5" /> : <ClipboardList className="h-3.5 w-3.5" />}
+            {n}
+          </Button>
         )
       },
     },
@@ -662,13 +768,28 @@ export default function EventsSection() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side={isMobile ? "bottom" : "right"}
-          className={isMobile ? "h-[80vh] rounded-t-xl overflow-y-auto" : "w-[420px] overflow-y-auto"}
+          className={isMobile ? "h-[80vh] rounded-t-xl overflow-y-auto" : "w-[560px] sm:max-w-[560px] overflow-y-auto"}
         >
           <SheetHeader>
             <SheetTitle>{editing ? "Editar event" : "Nou event"}</SheetTitle>
           </SheetHeader>
 
           <div className="space-y-4 py-4">
+            {!editing && (
+              <CercadorFCA
+                onTria={({ title, lloc, data, tipusPista, link }) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    title,
+                    lloc: lloc || prev.lloc,
+                    ubicacio: prev.ubicacio || lloc || "",
+                    link: link || prev.link,
+                    tipusPista: tipusPista || prev.tipusPista,
+                    date: data ? new Date(`${data}T12:00:00`) : prev.date,
+                  }))
+                }
+              />
+            )}
             <Input
               placeholder="Nom de l'event"
               value={form.title}
@@ -679,6 +800,16 @@ export default function EventsSection() {
               value={form.lloc}
               onChange={e => setForm({ ...form, lloc: e.target.value })}
             />
+            <div>
+              <Input
+                placeholder="Ubicació (enllaç de Google Maps o adreça)"
+                value={form.ubicacio}
+                onChange={e => setForm({ ...form, ubicacio: e.target.value })}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Els pares hi veuran un botó per obrir-ho a Google Maps o Apple Maps.
+              </p>
+            </div>
 
             <Input
               placeholder="Enllaç (opcional)"
@@ -748,10 +879,83 @@ export default function EventsSection() {
               )}
             </div>
 
+            {/* Proves per categoria i sexe */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">
+                {form.tipusPista === "cross" ? "Distància per categoria" : "Proves per categoria"}{" "}
+                <span className="font-normal">(els pares només veuen les del seu fill/a)</span>
+              </p>
+              <ProvesPerCategoriaEditor
+                key={`${editing?.id ?? "nou"}-${form.tipusPista === "cross" ? "cross" : "pista"}`}
+                cross={form.tipusPista === "cross"}
+                categories={form.categories.length > 0 ? TOTES_CATEGORIES.filter((c) => form.categories.includes(c)) : categoriesDisponibles}
+                proves={proves}
+                value={form.provesPerCategoria}
+                onChange={(provesPerCategoria) => setForm((prev) => ({ ...prev, provesPerCategoria }))}
+              />
+            </div>
+
+            {/* Inscripcions dels pares */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={form.inscripcionsActives}
+                  onCheckedChange={(v) => setForm({ ...form, inscripcionsActives: v === true })}
+                />
+                Els pares poden apuntar-s'hi des del calendari
+              </label>
+
+              {form.inscripcionsActives && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground">Últim dia per apuntar-se</p>
+                  <div className="flex gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="flex-1 justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.ultimDia
+                            ? format(form.ultimDia, "EEEE dd/MM/yyyy", { locale: ca })
+                            : form.date
+                              ? `Per defecte: ${format(ultimDiaInscripcio(tancamentPerDefecte(form.date)), "EEEE dd/MM", { locale: ca })}`
+                              : "Per defecte: divendres de la setmana anterior"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={form.ultimDia ?? undefined}
+                          onSelect={(d) => setForm({ ...form, ultimDia: d ?? null })}
+                          weekStartsOn={1}
+                          locale={ca}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {form.ultimDia && (
+                      <Button variant="ghost" size="icon" onClick={() => setForm({ ...form, ultimDia: null })} aria-label="Tornar al per defecte">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    En acabar aquest dia es tanquen les inscripcions i s'envien per correu.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <Button className="w-full" onClick={save}>Guardar</Button>
           </div>
         </SheetContent>
       </Sheet>
+
+      <InscripcionsEventSheet
+        event={events.find((e) => e.id === inscripcionsEventId) ?? null}
+        open={!!inscripcionsEventId}
+        onOpenChange={(v) => { if (!v) setInscripcionsEventId(null) }}
+        onChanged={load}
+        isMobile={isMobile}
+      />
 
       <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
         <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-lg">
