@@ -28,6 +28,8 @@ export function calTriarProves(event, categoria, sexe) {
 export function provesEfectives(event, categoria, sexe, triades) {
   const totes = provesIdsDe(event, categoria, sexe)
   if (!calTriarProves(event, categoria, sexe)) return totes
+  // Una sola opció (p. ex. la distància d'un cros): no hi ha res a triar.
+  if (totes.length === 1) return totes
   return (triades ?? []).filter((id) => totes.includes(id))
 }
 

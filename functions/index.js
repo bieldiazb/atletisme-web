@@ -352,6 +352,7 @@ function calTriarProves(ev, categoria, sexe) {
 function provesEfectives(ev, categoria, sexe, triades) {
   const totes = provesIdsDe(ev, categoria, sexe)
   if (!calTriarProves(ev, categoria, sexe)) return totes
+  if (totes.length === 1) return totes // una sola opció (distància de cros): res a triar
   return (triades ?? []).filter((id) => totes.includes(id))
 }
 
@@ -408,7 +409,9 @@ exports.setInscripcioPares = onCall(async (request) => {
   }
   if (va) {
     const permeses = provesIdsDe(ev, atleta.categoria, atleta.sexe)
-    provesTriades = [...new Set(Array.isArray(proves) ? proves : [])].filter((id) => permeses.includes(id))
+    provesTriades = permeses.length === 1
+      ? [...permeses]
+      : [...new Set(Array.isArray(proves) ? proves : [])].filter((id) => permeses.includes(id))
     const max = maxProvesDe(ev, atleta.categoria)
     if (provesTriades.length === 0) {
       throw new HttpsError("failed-precondition", "Cal triar almenys una prova")

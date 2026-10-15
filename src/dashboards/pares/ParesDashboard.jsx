@@ -6,7 +6,6 @@ import { db } from "../../../firebaseClient"
 import {
   SidebarProvider,
   SidebarInset,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/ui/sidebar/AppSidebar"
 import { MobileBottomNav } from "@/components/ui/sidebar/MobileBottomNav"
@@ -192,8 +191,7 @@ export default function ParesDashboard() {
       />
 
       <SidebarInset className="flex h-screen flex-col">
-        <div className="flex items-center gap-3 border-b p-4 lg:hidden">
-          <SidebarTrigger className="h-8 w-8 rounded-md border" />
+        <div className="flex items-center gap-3 border-b px-4 py-3 lg:hidden">
           <span className="font-semibold truncate">{athleteName}</span>
         </div>
 

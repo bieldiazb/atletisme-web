@@ -293,19 +293,19 @@ export default function CalendariSection({ categories = [], siblings = [], codi 
               {/* Left accent bar */}
               <div className={`absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b ${style.accent}`} />
 
-              <div className="flex items-center gap-4 pl-5 pr-4 py-4">
+              <div className="flex items-center gap-3 sm:gap-4 pl-4 sm:pl-5 pr-3 sm:pr-4 py-2.5 sm:py-4">
 
                 {/* Date bubble */}
-                <div className="flex-shrink-0 flex flex-col items-center justify-center w-14 h-14 rounded-xl bg-muted text-center">
-                  <span className="text-xl font-black leading-none">{date.getDate()}</span>
-                  <span className="text-xs font-semibold text-muted-foreground mt-0.5">
+                <div className="flex-shrink-0 flex flex-col items-center justify-center w-11 h-11 sm:w-14 sm:h-14 rounded-xl bg-muted text-center">
+                  <span className="text-base sm:text-xl font-black leading-none">{date.getDate()}</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground mt-0.5">
                     {MONTHS_CA[date.getMonth()]}
                   </span>
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-base truncate leading-snug">{event.title}</p>
+                  <p className="font-bold text-sm sm:text-base truncate leading-snug">{event.title}</p>
                   {event.link && (
                     <a
                       href={event.link}
@@ -318,10 +318,11 @@ export default function CalendariSection({ categories = [], siblings = [], codi 
                     </a>
                   )}
 
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                  <div className="flex flex-wrap gap-x-2.5 gap-y-1 mt-1 sm:mt-1.5">
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <CalendarDays className="h-3.5 w-3.5" />
-                      {date.toLocaleDateString("ca-ES", { weekday: "long", day: "numeric", month: "long" })}
+                      <span className="sm:hidden">{date.toLocaleDateString("ca-ES", { weekday: "short", day: "numeric", month: "short" })}</span>
+                      <span className="hidden sm:inline">{date.toLocaleDateString("ca-ES", { weekday: "long", day: "numeric", month: "long" })}</span>
                     </span>
                     {event.lloc && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -369,7 +370,7 @@ export default function CalendariSection({ categories = [], siblings = [], codi 
                 </div>
 
                 {/* Urgency pill */}
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 hidden sm:block">
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${style.pill}`}>
                     <Clock className="h-3 w-3" />
                     {style.label}
@@ -404,7 +405,7 @@ export default function CalendariSection({ categories = [], siblings = [], codi 
                 const oberta = inscripcionsObertes(event)
                 const tancament = tancamentDe(event)
                 return (
-                  <div className="border-t bg-muted/30 pl-5 pr-4 py-3 space-y-3">
+                  <div className="border-t bg-muted/30 pl-4 sm:pl-5 pr-3 sm:pr-4 py-2.5 sm:py-3 space-y-2 sm:space-y-3">
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       {oberta ? (
                         <>
@@ -425,7 +426,7 @@ export default function CalendariSection({ categories = [], siblings = [], codi 
                       const ocupat = desant === clau
                       const provesFill = provesDe(event, fill)
                       const sel = triades[clau] ?? []
-                      const provesTriades = provesFill.filter((p) => sel.includes(p.id))
+                      const provesTriades = provesFill.length === 1 ? provesFill : provesFill.filter((p) => sel.includes(p.id))
                       return (
                         <div key={fill.id} className="space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
