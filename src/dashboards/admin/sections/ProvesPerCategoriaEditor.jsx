@@ -57,7 +57,7 @@ function CrossDistancies({ categories, value, onChange }) {
         </div>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        Distància de cada categoria en aquest cros (en metres). Si poses la dels nens, les nenes la copien; la pots canviar a part.
+        Distància de cada categoria en aquesta competició (en metres). Si poses la dels nens, les nenes la copien; la pots canviar a part.
       </p>
     </div>
   )

@@ -23,7 +23,7 @@ import {
 import InscripcionsEventSheet from "./InscripcionsEventSheet"
 import ProvesPerCategoriaEditor from "./ProvesPerCategoriaEditor"
 import CercadorFCA from "./CercadorFCA"
-import { netejaProvesPerCategoria } from "@/lib/provesEvent"
+import { netejaProvesPerCategoria, esTipusDistancia } from "@/lib/provesEvent"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -426,11 +426,11 @@ export default function EventsSection() {
           if (!(ppc[cat]?.F ?? []).length) falten.push(`${cat} nenes`)
         })
         if (falten.length) {
-          toast({ variant: "destructive", title: form.tipusPista === "cross" ? "Falten distàncies" : "Falten proves", description: `${form.tipusPista === "cross" ? "Posa la distància a" : "Posa proves a"}: ${falten.join(", ")}` })
+          toast({ variant: "destructive", title: esTipusDistancia(form.tipusPista) ? "Falten distàncies" : "Falten proves", description: `${esTipusDistancia(form.tipusPista) ? "Posa la distància a" : "Posa proves a"}: ${falten.join(", ")}` })
           return
         }
       } else if (!Object.values(ppc).some((x) => (x?.M ?? []).length || (x?.F ?? []).length)) {
-        toast({ variant: "destructive", title: form.tipusPista === "cross" ? "Falten distàncies" : "Falten proves", description: form.tipusPista === "cross" ? "Posa la distància de cada categoria o desactiva les inscripcions" : "Posa les proves de cada categoria o desactiva les inscripcions" })
+        toast({ variant: "destructive", title: esTipusDistancia(form.tipusPista) ? "Falten distàncies" : "Falten proves", description: esTipusDistancia(form.tipusPista) ? "Posa la distància de cada categoria o desactiva les inscripcions" : "Posa les proves de cada categoria o desactiva les inscripcions" })
         return
       }
     }
@@ -882,12 +882,12 @@ export default function EventsSection() {
             {/* Proves per categoria i sexe */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">
-                {form.tipusPista === "cross" ? "Distància per categoria" : "Proves per categoria"}{" "}
+                {esTipusDistancia(form.tipusPista) ? "Distància per categoria" : "Proves per categoria"}{" "}
                 <span className="font-normal">(els pares només veuen les del seu fill/a)</span>
               </p>
               <ProvesPerCategoriaEditor
-                key={`${editing?.id ?? "nou"}-${form.tipusPista === "cross" ? "cross" : "pista"}`}
-                cross={form.tipusPista === "cross"}
+                key={`${editing?.id ?? "nou"}-${esTipusDistancia(form.tipusPista) ? "cross" : "pista"}`}
+                cross={esTipusDistancia(form.tipusPista)}
                 categories={form.categories.length > 0 ? TOTES_CATEGORIES.filter((c) => form.categories.includes(c)) : categoriesDisponibles}
                 proves={proves}
                 value={form.provesPerCategoria}

@@ -17,6 +17,7 @@ import { categoriaPerNaixement, esAtletaVigent } from "@/lib/categoria"
 import { logAudit } from "@/lib/auditLog"
 import { urlAcces } from "@/lib/accesPares"
 import { codisDe, generarCodi } from "@/lib/codisAcces"
+import { nomEnMajuscules } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -386,6 +387,29 @@ export default function AthletesSection() {
 
   const clearSelection = () => setSelectedIds(new Set())
 
+  // Exporta a CSV (Excel en català: ; i BOM) els atletes seleccionats.
+  const exportarSeleccioCsv = () => {
+    const files = athletes.filter((a) => selectedIds.has(a.id))
+    if (files.length === 0) return
+    const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`
+    const data = (n) => {
+      const d = n?.toDate ? n.toDate() : n ? new Date(n) : null
+      return d && !isNaN(d) ? format(d, "dd/MM/yyyy") : ""
+    }
+    const capcalera = ["Nom", "Categoria", "Sexe", "Naixement", "Actiu"]
+    const linies = files
+      .sort((a, b) => (a.categoria ?? "").localeCompare(b.categoria ?? "") || (a.nom ?? "").localeCompare(b.nom ?? "", "ca"))
+      .map((a) => [a.nom, a.categoria, a.sexe, data(a.naixement), a.actiu === false ? "No" : "Sí"].map(cel).join(";"))
+    const csv = "\uFEFF" + [capcalera.map(cel).join(";"), ...linies].join("\r\n")
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `atletes_${format(new Date(), "yyyy-MM-dd")}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast({ title: "CSV exportat", description: `${files.length} atlet${files.length > 1 ? "es" : "a"}` })
+  }
+
   const bulkSetActiu = async (value) => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
@@ -590,6 +614,7 @@ export default function AthletesSection() {
       const { codis, ...restForm } = form
       const payload = {
         ...restForm,
+        nom: nomEnMajuscules(form.nom),
         naixement: Timestamp.fromDate(form.naixement),
         categoria: categoriaPerNaixement(form.naixement),
         codisAcces: codisNetejats,
@@ -797,6 +822,10 @@ export default function AthletesSection() {
                 Canviar codis
               </Button>
             )}
+            <Button size="sm" variant="outline" disabled={bulkLoading} onClick={exportarSeleccioCsv}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Exportar CSV
+            </Button>
             <Button size="sm" variant="destructive" disabled={bulkLoading} onClick={() => setBulkDeleteConfirm(true)}>
               Eliminar seleccionats
             </Button>
@@ -1226,6 +1255,7 @@ function AthleteForm({ form, setForm, save, displayMonth, setDisplayMonth, years
         placeholder="Nom complet"
         value={form.nom}
         onChange={e => setForm({ ...form, nom: e.target.value })}
+        onBlur={() => setForm((f) => ({ ...f, nom: nomEnMajuscules(f.nom) }))}
       />
 
       {/* Codis d'accés — generats a l'atzar, un per pare/mare/tutor, es poden compartir entre germans */}

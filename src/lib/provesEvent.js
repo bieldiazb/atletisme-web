@@ -40,6 +40,9 @@ export function provesEfectives(event, categoria, sexe, triades) {
 // "dist:<metres>" — així inscripcions, pares i correu funcionen sense canvis.
 export const PREFIX_DISTANCIA = "dist:"
 
+// Tipus de competició que es munten per distància (no per proves del catàleg).
+export const esTipusDistancia = (tipusPista) => tipusPista === "cross" || tipusPista === "marxa_ruta"
+
 export const esIdDistancia = (id) => typeof id === "string" && id.startsWith(PREFIX_DISTANCIA)
 
 export const idDistancia = (metres) => `${PREFIX_DISTANCIA}${Math.round(Number(metres))}`
@@ -79,13 +82,13 @@ export function provaDeId(id, provesMap) {
 export function netejaProvesPerCategoria(mapa, categoriesEvent, tipusPista) {
   const out = {}
   const filtra = (ids) =>
-    tipusPista === undefined ? ids : ids.filter((id) => (tipusPista === "cross") === esIdDistancia(id))
+    tipusPista === undefined ? ids : ids.filter((id) => esTipusDistancia(tipusPista) === esIdDistancia(id))
   for (const [cat, perSexe] of Object.entries(mapa ?? {})) {
     if (categoriesEvent.length > 0 && !categoriesEvent.includes(cat)) continue
     const M = filtra(perSexe?.M ?? [])
     const F = filtra(perSexe?.F ?? [])
     const max = Number(perSexe?.max)
-    const ambMax = tipusPista !== "cross" && Number.isFinite(max) && max > 0
+    const ambMax = !esTipusDistancia(tipusPista) && Number.isFinite(max) && max > 0
     if (M.length || F.length) out[cat] = { M, F, ...(ambMax ? { max } : {}) }
   }
   return out

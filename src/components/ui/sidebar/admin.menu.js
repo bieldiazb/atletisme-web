@@ -15,6 +15,7 @@ import {
   UploadCloud,
   Eye,
   Award,
+  MapPinned,
   DatabaseBackup,
 } from "lucide-react"
 
@@ -42,6 +43,7 @@ export const adminMenu = [
     items: [
       { key: "assistencia", label: "Passar llista", icon: ClipboardCheck },
       { key: "registre-assistencia", label: "Registre assistència", icon: ClipboardList },
+      { key: "zones", label: "Zones", icon: MapPinned },
     ],
   },
   {

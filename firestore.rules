@@ -179,6 +179,17 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
+    // ── Zones d'entrenament: tot el staff ho llegeix (l'entrenador veu les
+    // seves categories filtrades a la web), només un admin ho escriu ─────
+    match /zones/{id} {
+      allow read: if isStaff();
+      allow write: if isAdminRole() || isDeveloperRole();
+    }
+    match /zones_setmana/{id} {
+      allow read: if isStaff();
+      allow write: if isAdminRole() || isDeveloperRole();
+    }
+
     // ── Equip òptim (eina de planificació de l'equip): només staff ──────
     match /equip_optim/{id} {
       allow read, write: if isStaff();

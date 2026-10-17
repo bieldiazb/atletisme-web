@@ -9,6 +9,7 @@ import { parseCsv } from "@/lib/csv"
 
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { nomEnMajuscules } from "@/lib/utils"
 import {
   UploadCloud,
   FileDown,
@@ -186,7 +187,7 @@ export default function ImportarAtletesCsvSection() {
         const codi = r.codi ?? generarCodi(usats)
         usats.add(codi)
         return {
-          nom: r.nom,
+          nom: nomEnMajuscules(r.nom),
           sexe: r.sexe,
           naixement: Timestamp.fromDate(r.naixement),
           categoria: r.categoria,

@@ -28,6 +28,7 @@ import AdminEstadistiquesSection from "./sections/AdminEstadistiquesSection "
 import EquipOptimSection     from "./sections/EquipOptimSection"
 import ImportarResultatsPDF  from "./sections/ImportarResultatsPDF"
 import DiplomesSection       from "./sections/DiplomesSection"
+import ZonesSection          from "./sections/ZonesSection"
 
 import { UserProvider, useUser } from "../../../UserContext"
 
@@ -94,6 +95,7 @@ function DashboardContent() {
           {view === "assistencia"   && <PassarLlistaSection />}
           {view === "registre-assistencia" && <RegistreAssistenciaSection />}
           {view === "calendar"      && <EventsSection />}
+          {view === "zones"         && <ZonesSection />}
           {view === "marques"       && <MarquesSection />}
           {view === "marques-relleu" && <MarquesRelleuSection />}
           {view === "proves"        && <ProvesSection />}
